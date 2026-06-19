@@ -5,33 +5,58 @@ import random
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
+
+def _price_block(original_price, discount_price):
+    """Monta o bloco de preço só quando há valores reais (sem inventar)."""
+    has_disc = bool(discount_price) and discount_price not in ("0.00", "0")
+    has_orig = bool(original_price) and original_price not in ("0.00", "0")
+    if has_disc and has_orig and original_price != discount_price:
+        return f"❌ De: R$ {original_price}\n✅ Por apenas: R$ {discount_price}"
+    if has_disc:
+        return f"💰 Por apenas: R$ {discount_price}"
+    return ""  # sem preço real
+
+
 def generate_ad_text(product_name, original_price, discount_price, category):
     """
-    Usa a API do Google Gemini para criar uma copy persuasiva de vendas.
+    Cria uma copy persuasiva para o Telegram. Mostra preço só quando é real;
+    se não houver preço, foca no produto ser destaque/mais vendido.
     """
+    price_block = _price_block(original_price, discount_price)
+
     if not GEMINI_API_KEY:
-        return f"🔥 PROMOÇÃO IMPERDÍVEL: {product_name}!\n\nDe: R$ {original_price}\nPor apenas: R$ {discount_price}\n\n🎟️ Use o cupom do APP para mais descontos!\n\nCorre que acaba rápido! 👇"
+        if price_block:
+            return f"🔥 OFERTA IMPERDÍVEL: {product_name}!\n\n{price_block}\n\n🎟️ Confira cupons no APP para descontos extras!\n\nCorre que é um dos mais vendidos! 👇"
+        return f"🔥 DESTAQUE: {product_name}!\n\n🏆 Um dos MAIS VENDIDOS em {category}!\n\n🎟️ Veja o preço e cupons no link 👇"
 
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
+        if price_block:
+            preco_info = f"Preço original: R$ {original_price}\nPreço atual: R$ {discount_price}"
+            regra_preco = "Destaque o preço/desconto de forma chamativa."
+        else:
+            preco_info = "Preço: não informado (NÃO invente preços!)"
+            regra_preco = "NÃO invente preços. Destaque que é um dos MAIS VENDIDOS da categoria e chame pra ver a oferta no link."
+
         prompt = f"""
         Você é um copywriter especialista em vendas e promoções para Telegram.
         Crie um anúncio curto (máximo 4 linhas), muito persuasivo, cheio de emojis.
-        
+
         Produto: {product_name}
         Categoria: {category}
-        Preço original: R$ {original_price}
-        Preço com desconto: R$ {discount_price}
-        
+        {preco_info}
+
         Regras:
-        1. Comece com um gatilho de urgência (Ex: ALERTA DE OFERTA, CORRE, BUG).
-        2. Destaque o desconto de forma chamativa.
-        3. Fale algo sobre "Verifique os Cupons de Desconto no APP (ex: CUPOM10, GANHE15) para o preço cair ainda mais!".
-        4. O texto DEVE ser curto para leitura rápida no celular.
+        1. Comece com um gatilho de urgência (Ex: ALERTA DE OFERTA, CORRE, TOP VENDAS).
+        2. {regra_preco}
+        3. Sugira verificar cupons no APP do Mercado Livre.
+        4. Texto curto para leitura rápida no celular.
         """
-        
+
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
         print(f"Erro na IA: {e}")
-        return f"🔥 OFERTA SURREAL: {product_name}!\n\n❌ De: R$ {original_price}\n✅ Por apenas: R$ {discount_price}\n\n🎟️ Aplique cupons de Frete Grátis ou Desconto no carrinho!\n\nAproveite antes que esgote! 👇"
+        if price_block:
+            return f"🔥 OFERTA SURREAL: {product_name}!\n\n{price_block}\n\n🎟️ Aplique cupons no carrinho!\n\nAproveite antes que esgote! 👇"
+        return f"🔥 TOP VENDAS: {product_name}!\n\n🏆 Um dos mais procurados em {category}!\n\n🎟️ Veja o preço e cupons no link 👇"

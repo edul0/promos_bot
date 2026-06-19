@@ -185,30 +185,138 @@ CATALOGO_PRODUTOS = [
     },
 ]
 
+# Categorias do ML (Brasil) usadas para buscar os MAIS VENDIDOS via /highlights.
+ML_HIGHLIGHT_CATEGORIES = {
+    "MLB1055": "Celulares e Smartphones",
+    "MLB1648": "Informática",
+    "MLB1000": "Eletrônicos, Áudio e Vídeo",
+    "MLB1144": "Games",
+    "MLB1276": "Esportes e Fitness",
+    "MLB1039": "Câmeras e Acessórios",
+    "MLB5726": "Eletrodomésticos",
+    "MLB1574": "Casa, Móveis e Decoração",
+    "MLB1430": "Roupas e Acessórios",
+}
+
+
+def _ml_headers(token):
+    h = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    if token:
+        h['Authorization'] = f'Bearer {token}'
+    return h
+
+
+def _build_product_link(product_id):
+    """A página de produto do catálogo do ML é /p/{id}. Adiciona o afiliado."""
+    return generate_ml_affiliate_link(f"https://www.mercadolivre.com.br/p/{product_id}")
+
+
+def _extract_product_image(data, pid):
+    """Acha a melhor imagem num /products/{id} (pictures no topo ou nos pickers)."""
+    pics = data.get("pictures") or []
+    if pics and pics[0].get("url"):
+        return fix_image_url(pics[0]["url"])
+    # cai pros pickers: prioriza o thumbnail do próprio id
+    pickers = data.get("pickers") or []
+    fallback = ""
+    for pk in pickers:
+        for prod in pk.get("products", []):
+            th = prod.get("thumbnail", "")
+            if not th:
+                continue
+            if prod.get("product_id") == pid:
+                return fix_image_url(th)
+            if not fallback:
+                fallback = th
+    return fix_image_url(fallback) if fallback else ""
+
+
+def _fetch_product(token, pid, ptype, cat_name):
+    """Busca os detalhes reais (nome, imagem, preço, link) de 1 produto/item."""
+    headers = _ml_headers(token)
+    try:
+        if ptype == "ITEM":
+            r = requests.get(f"https://api.mercadolibre.com/items/{pid}", headers=headers, timeout=10)
+            if r.status_code != 200:
+                return None
+            d = r.json()
+            price = d.get("price") or 0
+            original = d.get("original_price") or 0
+            pics = d.get("pictures") or []
+            image = fix_image_url(pics[0]["url"]) if pics else fix_image_url(d.get("thumbnail", ""))
+            permalink = d.get("permalink", "")
+            link = generate_ml_affiliate_link(permalink) if permalink else _build_product_link(pid)
+            return {
+                "name": d.get("title", "Produto"),
+                "category": cat_name,
+                "original_price": f"{original:.2f}" if original else "",
+                "discount_price": f"{price:.2f}" if price else "",
+                "image_url": image,
+                "affiliate_link": link,
+            }
+        # type PRODUCT (catálogo)
+        r = requests.get(f"https://api.mercadolibre.com/products/{pid}", headers=headers, timeout=10)
+        if r.status_code != 200:
+            return None
+        d = r.json()
+        bbw = d.get("buy_box_winner") or {}
+        price = bbw.get("price") or 0
+        original = bbw.get("original_price") or 0
+        image = _extract_product_image(d, pid)
+        if not image:
+            return None  # sem imagem não vale a pena (objetivo é promo COM imagem)
+        return {
+            "name": d.get("name", "Produto"),
+            "category": cat_name,
+            "original_price": f"{original:.2f}" if original else "",
+            "discount_price": f"{price:.2f}" if price else "",
+            "image_url": image,
+            "affiliate_link": _build_product_link(pid),
+        }
+    except Exception as e:
+        print(f"Erro ao buscar produto {pid}: {e}")
+        return None
+
+
+def _get_from_highlights(token, sent_ids, save_history):
+    """Pega os mais vendidos de uma categoria aleatória e monta a promo."""
+    headers = _ml_headers(token)
+    cats = list(ML_HIGHLIGHT_CATEGORIES.items())
+    random.shuffle(cats)
+    for cat_id, cat_name in cats:
+        try:
+            hr = requests.get(
+                f"https://api.mercadolibre.com/highlights/MLB/category/{cat_id}",
+                headers=headers, timeout=10,
+            )
+            if hr.status_code != 200:
+                print(f"highlights {cat_id}: status {hr.status_code}")
+                continue
+            content = hr.json().get("content", [])
+            candidates = [c for c in content if c.get("id") not in sent_ids] or content
+            random.shuffle(candidates)
+            for c in candidates[:6]:
+                pid, ptype = c.get("id"), c.get("type")
+                if not pid:
+                    continue
+                promo = _fetch_product(token, pid, ptype, cat_name)
+                if promo:
+                    save_history(pid)
+                    print(f"[HIGHLIGHTS] {cat_name}: {promo['name']}")
+                    return promo
+        except Exception as e:
+            print(f"Erro highlights {cat_id}: {e}")
+            continue
+    return None
+
+
 def get_ml_promotions():
     """
-    Busca produtos do ML. Tenta a API primeiro.
-    Se bloqueado, usa o catálogo curado com links de busca (que nunca quebram).
+    Busca os MAIS VENDIDOS do ML (API autenticada /highlights + /products).
+    Se não houver token ou a API falhar, cai no catálogo curado.
     """
-    queries = [
-        "Placa de video", "Smartphone Samsung", "Smart TV 4K", "Notebook gamer",
-        "Fone bluetooth JBL", "SSD 1TB NVMe", "Monitor gamer 144hz",
-        "Teclado mecanico RGB", "Mouse gamer", "PlayStation 5",
-        "Airfryer", "Echo Dot Alexa", "Kindle", "Xbox Series"
-    ]
-    query = random.choice(queries)
-
-    url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}&limit=20"
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-
-    # Autenticação OAuth: a API pública do ML foi restrita, então mandamos o token.
     access_token = get_valid_access_token()
-    if access_token:
-        headers['Authorization'] = f'Bearer {access_token}'
-        print("ML API: usando token de autenticação")
-    else:
-        print("ML API: sem token (cairá no catálogo se a API bloquear)")
-    
+
     # Sistema Anti-Repetição
     history_file = "/tmp/ml_history.txt"
     try:
@@ -216,55 +324,24 @@ def get_ml_promotions():
             sent_ids = f.read().splitlines()
     except FileNotFoundError:
         sent_ids = []
-        
+
     def save_history(product_id):
         try:
             with open(history_file, "a") as f:
                 f.write(f"{product_id}\n")
         except Exception:
             pass
-    
-    # === TENTA A API OFICIAL PRIMEIRO ===
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        print(f"ML API Status: {response.status_code} para query '{query}'")
-        
-        if response.status_code == 200:
-            data = response.json()
-            results = data.get("results", [])
-            
-            if results:
-                new_products = [p for p in results if p.get("id", "") not in sent_ids]
-                if not new_products:
-                    try:
-                        open(history_file, "w").close()
-                    except Exception:
-                        pass
-                    new_products = results
-                    
-                product = random.choice(new_products)
-                
-                price = product.get("price", 0)
-                original_price = product.get("original_price") or (price * 1.15)
-                thumbnail = product.get("thumbnail", "")
-                image_url = fix_image_url(thumbnail)
-                permalink = product.get("permalink", "")
-                affiliate_link = generate_ml_affiliate_link(permalink)
-                
-                save_history(product.get("id", ""))
-                print(f"[API] Produto: {product.get('title')}")
-                
-                return [{
-                    "name": product.get("title", "Produto"),
-                    "category": query,
-                    "original_price": f"{original_price:.2f}",
-                    "discount_price": f"{price:.2f}",
-                    "image_url": image_url,
-                    "affiliate_link": affiliate_link
-                }]
-    except Exception as e:
-        print(f"ML API erro: {e}")
-    
+
+    # === API AUTENTICADA: MAIS VENDIDOS ===
+    if access_token:
+        promo = _get_from_highlights(access_token, sent_ids, save_history)
+        if promo:
+            return [promo]
+        print("Highlights não retornou produto; usando catálogo")
+    else:
+        print("Sem token do ML (autorize em /api/ml_auth); usando catálogo")
+
+
     # === FALLBACK: CATÁLOGO COM LINKS DE BUSCA ===
     print("Usando catálogo curado com links de busca")
 
@@ -286,24 +363,11 @@ def get_ml_promotions():
     print(f"[CATALOGO] Produto: {chosen['name']}")
     print(f"[CATALOGO] Link: {affiliate_link}")
 
-    # Tenta buscar imagem do produto via API do ML pelo search_term
-    image_url = ""
-    try:
-        search_api_url = f"https://api.mercadolibre.com/sites/MLB/search?q={quote(chosen['search_term'])}&limit=1"
-        img_resp = requests.get(search_api_url, headers=headers, timeout=8)
-        if img_resp.status_code == 200:
-            results = img_resp.json().get("results", [])
-            if results:
-                image_url = fix_image_url(results[0].get("thumbnail", ""))
-                print(f"[CATALOGO] Imagem encontrada: {image_url}")
-    except Exception as e:
-        print(f"[CATALOGO] Falha ao buscar imagem: {e}")
-
     return [{
         "name": chosen["name"],
         "category": chosen["category"],
         "original_price": chosen["original_price"],
         "discount_price": chosen["discount_price"],
-        "image_url": image_url,
+        "image_url": "",  # catálogo é texto; a busca de imagem foi bloqueada pelo ML
         "affiliate_link": affiliate_link
     }]
