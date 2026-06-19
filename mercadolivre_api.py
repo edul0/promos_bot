@@ -310,7 +310,7 @@ def _fetch_product(token, pid, ptype, cat_name):
         price = bbw.get("price") or 0
         original = bbw.get("original_price") or 0
         
-        # Ocasionalmente o ML esconde o preço do /products, mas deixa o item_id
+        # Tenta recuperar o preço via item_id do buy_box_winner
         if not price and bbw.get("item_id"):
             try:
                 ir = requests.get(f"https://api.mercadolibre.com/items/{bbw['item_id']}", headers=headers, timeout=5)
@@ -318,23 +318,22 @@ def _fetch_product(token, pid, ptype, cat_name):
                     id_data = ir.json()
                     price = id_data.get("price") or 0
                     original = id_data.get("original_price") or 0
-            except:
+            except Exception:
                 pass
-                
-        # Se buy_box_winner for nulo ou não tiver item_id, busca o preço do produto via /search
+
+        # Fallback: lista os itens do produto e pega o preço do mais barato
         if not price:
             try:
-                prod_name = d.get("name", "")
-                if prod_name:
-                    from urllib.parse import quote
-                    q = quote(prod_name)
-                    search_r = requests.get(f"https://api.mercadolibre.com/sites/MLB/search?q={q}&limit=1", headers=headers, timeout=5)
-                    if search_r.status_code == 200:
-                        results = search_r.json().get("results", [])
-                        if results:
-                            price = results[0].get("price") or 0
-                            original = results[0].get("original_price") or 0
-            except:
+                ir = requests.get(f"https://api.mercadolibre.com/products/{pid}/items", headers=headers, timeout=5)
+                if ir.status_code == 200:
+                    items_data = ir.json()
+                    results = items_data.get("results") or []
+                    prices = [i.get("price") for i in results if i.get("price")]
+                    if prices:
+                        price = min(prices)
+                        origs = [i.get("original_price") for i in results if i.get("original_price")]
+                        original = max(origs) if origs else 0
+            except Exception:
                 pass
                 
         # Se achou preço mas não tem original, gera um original estimado (15% a mais) para o visual de desconto
