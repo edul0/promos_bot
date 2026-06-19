@@ -7,18 +7,16 @@ if GEMINI_API_KEY:
 
 def generate_ad_text(product_name, original_price, discount_price, category):
     """
-    Usa o Gemini para criar um texto chamativo para Telegram com base nos detalhes do produto.
-    Caso a chave da API não esteja configurada, retorna um texto padrão.
+    Usa a API do Google Gemini para criar uma copy persuasiva de vendas.
     """
     if not GEMINI_API_KEY:
-        # Fallback sem IA
-        return f"🔥 Promoção em {category} 🔥\n\n{product_name}\nDe: R$ {original_price}\nPor: R$ {discount_price}\n\nAproveite antes que acabe!"
+        return f"🔥 PROMOÇÃO IMPERDÍVEL: {product_name}!\n\nDe: R$ {original_price}\nPor apenas: R$ {discount_price}\n\n🎟️ Use o cupom do APP para mais descontos!\n\nCorre que acaba rápido! 👇"
 
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-pro')
         prompt = f"""
-        Você é um copywriter especialista em grupos de promoções no Telegram.
-        Crie um texto curto, empolgante, com emojis e muito chamativo para o seguinte produto:
+        Você é um copywriter especialista em vendas e promoções para Telegram.
+        Crie um anúncio curto (máximo 4 linhas), muito persuasivo, cheio de emojis.
         
         Produto: {product_name}
         Categoria: {category}
@@ -26,13 +24,14 @@ def generate_ad_text(product_name, original_price, discount_price, category):
         Preço com desconto: R$ {discount_price}
         
         Regras:
-        - Não escreva o link (eu vou adicionar no código depois).
-        - Use gatilhos mentais de urgência (Ex: 'Corre que acaba rápido', 'Estoque limitado').
-        - Seja direto, as pessoas no Telegram querem ler rápido.
-        - Não coloque aspas em volta da mensagem.
+        1. Comece com um gatilho de urgência (Ex: ALERTA DE OFERTA, CORRE, BUG).
+        2. Destaque o desconto de forma chamativa.
+        3. Fale algo sobre "Verifique os Cupons de Desconto no APP (ex: CUPOM10, GANHE15) para o preço cair ainda mais!".
+        4. O texto DEVE ser curto para leitura rápida no celular.
         """
+        
         response = model.generate_content(prompt)
-        return response.text.strip()
+        return response.text
     except Exception as e:
-        print(f"Erro ao gerar texto com IA: {e}")
-        return f"🔥 OFERTA IMPERDÍVEL 🔥\n\n{product_name}\nDe: R$ {original_price}\nPor: R$ {discount_price}"
+        print(f"Erro na IA: {e}")
+        return f"🔥 OFERTA SURREAL: {product_name}!\n\n❌ De: R$ {original_price}\n✅ Por apenas: R$ {discount_price}\n\n🎟️ Aplique cupons de Frete Grátis ou Desconto no carrinho!\n\nAproveite antes que esgote! 👇"

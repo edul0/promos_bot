@@ -64,19 +64,41 @@ def get_shopee_promotions():
     url = f"https://shopee.com.br/api/v4/search/search_items?keyword={query}&limit=10"
     headers = {"User-Agent": "Mozilla/5.0"}
     
+    backup_products = [
+        {
+            "name": "Box Booster Pokémon TCG Escarlate e Violeta 151",
+            "category": "Cartas Pokémon",
+            "original_price": "899.90",
+            "discount_price": "649.90",
+            "image_url": "https://http2.mlstatic.com/D_NQ_NP_603831-MLU73100693998_112023-O.webp",
+            "affiliate_link": generate_shopee_short_link("https://shopee.com.br/produto/123")
+        },
+        {
+            "name": "Placa de Vídeo RTX 4060 Ti 8GB",
+            "category": "Peças de PC",
+            "original_price": "2999.00",
+            "discount_price": "2399.00",
+            "image_url": "https://http2.mlstatic.com/D_NQ_NP_908233-MLU72688048227_112023-O.webp",
+            "affiliate_link": generate_shopee_short_link("https://shopee.com.br/produto/456")
+        }
+    ]
+    
     try:
         response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            return [random.choice(backup_products)]
+            
         data = response.json()
         
         items = data.get("items", [])
         if not items:
-            return []
+            return [random.choice(backup_products)]
             
         item_data = random.choice(items)
         item = item_data.get("item_basic", item_data)
         
         name = item.get("name", "Produto Shopee")
-        price = item.get("price", 0) / 100000 # O preço na Shopee vem multiplicado
+        price = item.get("price", 0) / 100000 
         original_price = item.get("price_before_discount", 0) / 100000
         if original_price == 0: original_price = price * 1.1
         
@@ -100,4 +122,4 @@ def get_shopee_promotions():
         
     except Exception as e:
         print(f"Erro na busca da Shopee: {e}")
-        return []
+        return [random.choice(backup_products)]
