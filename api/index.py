@@ -32,6 +32,7 @@ async def send_promotion_to_telegram(product):
             response = requests.get(product['image_url'], headers={'User-Agent': 'Mozilla/5.0'})
             if response.status_code == 200:
                 photo_bytes = io.BytesIO(response.content)
+                photo_bytes.name = "imagem.jpg"  # <-- ATRIBUTO OBRIGATÓRIO PARA O TELEGRAM
                 await bot.send_photo(
                     chat_id=TELEGRAM_CHAT_ID,
                     photo=photo_bytes,
