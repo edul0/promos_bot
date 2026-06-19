@@ -2,7 +2,7 @@ import os
 import asyncio
 import io
 import requests
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request, redirect
 
 # Adiciona o diretório pai ao path para conseguir importar os módulos
 import sys
@@ -11,9 +11,16 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 from ai_generator import generate_ad_text
 from mercadolivre_api import get_ml_promotions
+from ml_oauth import get_authorization_url, exchange_code
 from telegram import Bot
 
 app = Flask(__name__)
+
+
+def get_redirect_uri():
+    """Monta o redirect_uri do OAuth a partir do host atual (sempre https na Vercel)."""
+    host = request.headers.get("X-Forwarded-Host") or request.host
+    return f"https://{host}/api/ml_callback"
 
 async def send_promotion_to_telegram(product):
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
@@ -72,6 +79,33 @@ async def send_promotion_to_telegram(product):
 @app.route('/')
 def home():
     return jsonify({"status": "Bot está online! Acesse /api/cron para disparar uma promoção."})
+
+
+@app.route('/api/ml_auth')
+def ml_auth():
+    """Passo 1 do OAuth: redireciona o usuário para autorizar o app no Mercado Livre."""
+    redirect_uri = get_redirect_uri()
+    return redirect(get_authorization_url(redirect_uri))
+
+
+@app.route('/api/ml_callback')
+def ml_callback():
+    """Passo 2 do OAuth: o ML volta aqui com ?code=... -> trocamos por tokens e salvamos."""
+    code = request.args.get("code")
+    error = request.args.get("error")
+    if error:
+        return jsonify({"status": "erro", "motivo": error}), 400
+    if not code:
+        return jsonify({"status": "erro", "motivo": "code ausente na resposta do ML"}), 400
+
+    try:
+        exchange_code(code, get_redirect_uri())
+        return jsonify({
+            "status": "sucesso",
+            "mensagem": "Autorização concluída! Tokens salvos no Vercel KV. O bot já pode buscar produtos reais."
+        })
+    except Exception as e:
+        return jsonify({"status": "erro", "motivo": f"Falha ao trocar o code: {e}"}), 500
 
 @app.route('/api/cron')
 def trigger_cron():

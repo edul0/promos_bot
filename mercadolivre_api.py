@@ -3,6 +3,8 @@ import requests
 import os
 from urllib.parse import urlencode, quote
 
+from ml_oauth import get_valid_access_token
+
 ML_MATT_TOOL = os.getenv("ML_MATT_TOOL", "")
 ML_MATT_WORD = os.getenv("ML_MATT_WORD", "")
 
@@ -195,9 +197,17 @@ def get_ml_promotions():
         "Airfryer", "Echo Dot Alexa", "Kindle", "Xbox Series"
     ]
     query = random.choice(queries)
-    
+
     url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}&limit=20"
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+
+    # Autenticação OAuth: a API pública do ML foi restrita, então mandamos o token.
+    access_token = get_valid_access_token()
+    if access_token:
+        headers['Authorization'] = f'Bearer {access_token}'
+        print("ML API: usando token de autenticação")
+    else:
+        print("ML API: sem token (cairá no catálogo se a API bloquear)")
     
     # Sistema Anti-Repetição
     history_file = "/tmp/ml_history.txt"
