@@ -102,20 +102,23 @@ def ml_debug():
         info["conclusao"] = "Sem token. KV vazio ou ML_CLIENT_SECRET ausente."
         return jsonify(info)
 
-    test_url = "https://api.mercadolibre.com/sites/MLB/search?q=jbl%20flip%206&limit=1"
-    try:
-        r = requests.get(
-            test_url,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "User-Agent": "Mozilla/5.0",
-            },
-            timeout=10,
-        )
-        info["busca_status"] = r.status_code
-        info["busca_resposta"] = r.text[:800]
-    except Exception as e:
-        info["busca_erro"] = str(e)
+    # Testa vários endpoints para ver quais ainda respondem com o token.
+    # 403 = bloqueado; 200 = ok; 404 = liberado mas id inexistente (serve p/ saber se abre).
+    headers = {"Authorization": f"Bearer {token}", "User-Agent": "Mozilla/5.0"}
+    endpoints = {
+        "users_me": "https://api.mercadolibre.com/users/me",
+        "search": "https://api.mercadolibre.com/sites/MLB/search?q=jbl&limit=1",
+        "item_real": "https://api.mercadolibre.com/items/MLB1234567890",
+        "highlights": "https://api.mercadolibre.com/highlights/MLB/category/MLB1055",
+    }
+    testes = {}
+    for nome, u in endpoints.items():
+        try:
+            r = requests.get(u, headers=headers, timeout=10)
+            testes[nome] = {"status": r.status_code, "resp": r.text[:200]}
+        except Exception as e:
+            testes[nome] = {"erro": str(e)}
+    info["testes"] = testes
     return jsonify(info)
 
 
