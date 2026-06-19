@@ -3,14 +3,15 @@ import requests
 import os
 from urllib.parse import urlencode, quote
 
-# ID de afiliado - nunca expira!
-ML_MATT_TOOL = os.getenv("ML_MATT_TOOL", "82883927")
-ML_MATT_WORD = os.getenv("ML_MATT_WORD", "matoscarlos20220825095337")
+ML_MATT_TOOL = os.getenv("ML_MATT_TOOL", "")
+ML_MATT_WORD = os.getenv("ML_MATT_WORD", "")
 
 def generate_ml_affiliate_link(product_url):
     """
     Adiciona parâmetros de rastreamento de afiliado a qualquer URL do ML.
     """
+    if not ML_MATT_TOOL or not ML_MATT_WORD:
+        return product_url
     separator = "&" if "?" in product_url else "?"
     params = urlencode({
         "matt_tool": ML_MATT_TOOL,
@@ -256,7 +257,7 @@ def get_ml_promotions():
     
     # === FALLBACK: CATÁLOGO COM LINKS DE BUSCA ===
     print("Usando catálogo curado com links de busca")
-    
+
     unused = [p for p in CATALOGO_PRODUTOS if p["name"] not in sent_ids]
     if not unused:
         try:
@@ -264,22 +265,35 @@ def get_ml_promotions():
         except Exception:
             pass
         unused = CATALOGO_PRODUTOS
-    
+
     chosen = random.choice(unused)
     save_history(chosen["name"])
-    
+
     # Gera link de BUSCA com afiliado (nunca quebra!)
     search_url = make_search_url(chosen["search_term"])
     affiliate_link = generate_ml_affiliate_link(search_url)
-    
+
     print(f"[CATALOGO] Produto: {chosen['name']}")
     print(f"[CATALOGO] Link: {affiliate_link}")
-    
+
+    # Tenta buscar imagem do produto via API do ML pelo search_term
+    image_url = ""
+    try:
+        search_api_url = f"https://api.mercadolibre.com/sites/MLB/search?q={quote(chosen['search_term'])}&limit=1"
+        img_resp = requests.get(search_api_url, headers=headers, timeout=8)
+        if img_resp.status_code == 200:
+            results = img_resp.json().get("results", [])
+            if results:
+                image_url = fix_image_url(results[0].get("thumbnail", ""))
+                print(f"[CATALOGO] Imagem encontrada: {image_url}")
+    except Exception as e:
+        print(f"[CATALOGO] Falha ao buscar imagem: {e}")
+
     return [{
         "name": chosen["name"],
         "category": chosen["category"],
         "original_price": chosen["original_price"],
         "discount_price": chosen["discount_price"],
-        "image_url": "",  # Sem imagem no fallback, será enviado como texto
+        "image_url": image_url,
         "affiliate_link": affiliate_link
     }]
