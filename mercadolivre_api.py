@@ -48,7 +48,7 @@ def get_ml_promotions():
             "original_price": "3499.00",
             "discount_price": "2499.00",
             "image_url": "https://http2.mlstatic.com/D_NQ_NP_895398-MLA45642874100_042021-O.jpg",
-            "affiliate_link": generate_ml_affiliate_link("https://produto.mercadolivre.com.br/MLB-12345678-smart-tv-55")
+            "affiliate_link": generate_ml_affiliate_link("https://produto.mercadolivre.com.br/MLB-3351980315-smart-tv-samsung-55-polegadas-crystal-uhd-4k-55cu7700-2023-_JM")
         },
         {
             "name": "Smartphone Poco X6 Pro 5G 256GB",
@@ -56,7 +56,7 @@ def get_ml_promotions():
             "original_price": "2199.00",
             "discount_price": "1799.00",
             "image_url": "https://http2.mlstatic.com/D_NQ_NP_794270-MLA74070054707_012024-O.jpg",
-            "affiliate_link": generate_ml_affiliate_link("https://produto.mercadolivre.com.br/MLB-87654321-poco-x6-pro")
+            "affiliate_link": generate_ml_affiliate_link("https://produto.mercadolivre.com.br/MLB-4552084534-smartphone-xiaomi-poco-x6-pro-5g-dual-sim-256gb-preto-8gb-ram-_JM")
         }
     ]
     
