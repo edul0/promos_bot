@@ -30,8 +30,20 @@ async def send_promotion_to_telegram(product):
         discount_price=product['discount_price'],
         category=product['category']
     )
-    final_message = f"{ad_text}\n\n🛒 Compre aqui: {product['affiliate_link']}"
-    
+    # Banner de cupom/oferta quando há desconto real (preço atual < original)
+    deal_banner = ""
+    try:
+        op = float(product.get('original_price') or 0)
+        dp = float(product.get('discount_price') or 0)
+        if op > dp > 0:
+            pct = round((1 - dp / op) * 100)
+            if pct >= 5:
+                deal_banner = f"🎟️ CUPOM / OFERTA: {pct}% OFF!\n\n"
+    except Exception:
+        pass
+
+    final_message = f"{deal_banner}{ad_text}\n\n🛒 Compre aqui: {product['affiliate_link']}"
+
     # Telegram limita caption de fotos a 1024 caracteres!
     if len(final_message) > 1024:
         final_message = final_message[:1020] + "..."

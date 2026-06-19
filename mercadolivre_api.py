@@ -186,18 +186,36 @@ CATALOGO_PRODUTOS = [
     },
 ]
 
-# Categorias do ML (Brasil) usadas para buscar os MAIS VENDIDOS via /highlights.
+# Categorias do ML (Brasil) p/ os MAIS VENDIDOS via /highlights.
+# Formato: id -> (nome, peso). Peso maior = aparece com mais frequência.
 ML_HIGHLIGHT_CATEGORIES = {
-    "MLB1055": "Celulares e Smartphones",
-    "MLB1648": "Informática",
-    "MLB1000": "Eletrônicos, Áudio e Vídeo",
-    "MLB1144": "Games",
-    "MLB1276": "Esportes e Fitness",
-    "MLB1039": "Câmeras e Acessórios",
-    "MLB5726": "Eletrodomésticos",
-    "MLB1574": "Casa, Móveis e Decoração",
-    "MLB1430": "Roupas e Acessórios",
+    # === DESTAQUE (peso alto) ===
+    "MLB3697": ("Fones de Ouvido", 4),
+    "MLB1132": ("Cartas Colecionáveis / Pokémon", 4),
+    "MLB1648": ("Informática e Peças de PC", 4),
+    # === GERAIS (peso 1) ===
+    "MLB1000": ("Eletrônicos, Áudio e Vídeo", 1),
+    "MLB1144": ("Games", 1),
+    "MLB1051": ("Celulares e Telefones", 1),
+    "MLB1276": ("Esportes e Fitness", 1),
+    "MLB1039": ("Câmeras e Acessórios", 1),
+    "MLB5726": ("Eletrodomésticos", 1),
+    "MLB1574": ("Casa, Móveis e Decoração", 1),
 }
+
+
+def _weighted_category_order():
+    """Ordena as categorias dando prioridade às de maior peso (destaque)."""
+    pool = []
+    for cid, (name, weight) in ML_HIGHLIGHT_CATEGORIES.items():
+        pool.extend([(cid, name)] * weight)
+    random.shuffle(pool)
+    seen, order = set(), []
+    for cid, name in pool:
+        if cid not in seen:
+            seen.add(cid)
+            order.append((cid, name))
+    return order
 
 
 def _ml_headers(token):
@@ -297,8 +315,7 @@ def _fetch_product(token, pid, ptype, cat_name):
 def _get_from_highlights(token, sent_ids, save_history):
     """Pega os mais vendidos de uma categoria aleatória e monta a promo."""
     headers = _ml_headers(token)
-    cats = list(ML_HIGHLIGHT_CATEGORIES.items())
-    random.shuffle(cats)
+    cats = _weighted_category_order()
     for cat_id, cat_name in cats:
         try:
             hr = requests.get(
