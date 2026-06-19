@@ -19,9 +19,11 @@ import requests
 ML_CLIENT_ID = os.getenv("ML_CLIENT_ID", "5392849814594048")
 ML_CLIENT_SECRET = os.getenv("ML_CLIENT_SECRET", "")
 
-# Vercel KV (Upstash Redis) - injetado automaticamente ao criar o KV na Vercel
-KV_URL = os.getenv("KV_REST_API_URL", "")
-KV_TOKEN = os.getenv("KV_REST_API_TOKEN", "")
+# Vercel KV / Upstash Redis - injetado automaticamente ao criar o storage na Vercel.
+# A Vercel migrou para a integração Upstash, que pode usar nomes diferentes,
+# então aceitamos os dois padrões.
+KV_URL = os.getenv("KV_REST_API_URL") or os.getenv("UPSTASH_REDIS_REST_URL", "")
+KV_TOKEN = os.getenv("KV_REST_API_TOKEN") or os.getenv("UPSTASH_REDIS_REST_TOKEN", "")
 TOKEN_KEY = "ml_tokens"
 
 AUTH_BASE = "https://auth.mercadolivre.com.br/authorization"
@@ -69,7 +71,12 @@ def save_tokens(token_data):
         # margem de 2 min antes do vencimento real (expires_in costuma ser 21600 = 6h)
         "expires_at": int(time.time()) + token_data.get("expires_in", 21600) - 120,
     }
-    kv_set(TOKEN_KEY, json.dumps(record))
+    ok = kv_set(TOKEN_KEY, json.dumps(record))
+    if not ok:
+        raise RuntimeError(
+            "Falha ao salvar tokens: Vercel KV não está configurado "
+            "(KV_REST_API_URL/KV_REST_API_TOKEN ou UPSTASH_REDIS_REST_URL/TOKEN ausentes)."
+        )
     return record
 
 

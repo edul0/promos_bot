@@ -85,9 +85,17 @@ def home():
 def ml_debug():
     """Diagnóstico: mostra se há token e o que a API de busca do ML responde."""
     from ml_oauth import get_valid_access_token, KV_URL, KV_TOKEN
+    # Lista os nomes de variáveis relacionadas a KV/Redis que a Vercel injetou
+    # (só os nomes, nunca os valores secretos)
+    kv_vars = sorted([
+        k for k in os.environ
+        if any(t in k.upper() for t in ("KV_", "UPSTASH", "REDIS"))
+    ])
     token = get_valid_access_token()
     info = {
         "kv_configurado": bool(KV_URL and KV_TOKEN),
+        "variaveis_kv_detectadas": kv_vars,
+        "ml_secret_configurado": bool(os.getenv("ML_CLIENT_SECRET")),
         "tem_token": bool(token),
     }
     if not token:
