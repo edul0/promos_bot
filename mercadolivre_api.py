@@ -4,6 +4,7 @@ import os
 from urllib.parse import urlencode, quote
 
 from ml_oauth import get_valid_access_token
+from ml_affiliate import generate_official_affiliate_link
 
 ML_MATT_TOOL = os.getenv("ML_MATT_TOOL", "")
 ML_MATT_WORD = os.getenv("ML_MATT_WORD", "")
@@ -211,6 +212,18 @@ def _build_product_link(product_id):
     return generate_ml_affiliate_link(f"https://www.mercadolivre.com.br/p/{product_id}")
 
 
+def _best_affiliate_link(product_url, fallback_url):
+    """
+    Tenta o link OFICIAL (meli.la) via gerador; se falhar (sessão expirada etc.),
+    usa o fallback /p/...matt_tool (que ainda carrega a etiqueta de afiliado).
+    """
+    official = generate_official_affiliate_link(product_url)
+    if official:
+        print(f"[AFILIADO] meli.la oficial: {official}")
+        return official
+    return generate_ml_affiliate_link(fallback_url)
+
+
 def _extract_product_image(data, pid):
     """Acha a melhor imagem num /products/{id} (pictures no topo ou nos pickers)."""
     pics = data.get("pictures") or []
@@ -245,7 +258,9 @@ def _fetch_product(token, pid, ptype, cat_name):
             pics = d.get("pictures") or []
             image = fix_image_url(pics[0]["url"]) if pics else fix_image_url(d.get("thumbnail", ""))
             permalink = d.get("permalink", "")
-            link = generate_ml_affiliate_link(permalink) if permalink else _build_product_link(pid)
+            real_url = permalink or f"https://www.mercadolivre.com.br/p/{pid}"
+            fallback = permalink or f"https://www.mercadolivre.com.br/p/{pid}"
+            link = _best_affiliate_link(real_url, fallback)
             return {
                 "name": d.get("title", "Produto"),
                 "category": cat_name,
@@ -265,13 +280,14 @@ def _fetch_product(token, pid, ptype, cat_name):
         image = _extract_product_image(d, pid)
         if not image:
             return None  # sem imagem não vale a pena (objetivo é promo COM imagem)
+        pid_url = f"https://www.mercadolivre.com.br/p/{pid}"
         return {
             "name": d.get("name", "Produto"),
             "category": cat_name,
             "original_price": f"{original:.2f}" if original else "",
             "discount_price": f"{price:.2f}" if price else "",
             "image_url": image,
-            "affiliate_link": _build_product_link(pid),
+            "affiliate_link": _best_affiliate_link(pid_url, pid_url),
         }
     except Exception as e:
         print(f"Erro ao buscar produto {pid}: {e}")
