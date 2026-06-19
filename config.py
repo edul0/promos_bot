@@ -10,10 +10,10 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "") # ID do grupo ou canal onde
 # Gemini IA (Opcional - mas recomendado para anúncios personalizados)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
-# Shopee Affiliate
+# Mercado Livre Afiliado (Método Simples - só o ID, sem cookie!)
+ML_MATT_TOOL = os.getenv("ML_MATT_TOOL", "82883927")
+ML_MATT_WORD = os.getenv("ML_MATT_WORD", "matoscarlos20220825095337")
+
+# Shopee Affiliate (para quando quiser ativar)
 SHOPEE_APP_ID = os.getenv("SHOPEE_APP_ID", "")
 SHOPEE_APP_SECRET = os.getenv("SHOPEE_APP_SECRET", "")
-
-# Mercado Livre Affiliate
-ML_APP_ID = os.getenv("ML_APP_ID", "")
-ML_CLIENT_SECRET = os.getenv("ML_CLIENT_SECRET", "")

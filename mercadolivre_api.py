@@ -1,125 +1,95 @@
 import random
 import requests
 import os
+from urllib.parse import urlencode
 
-# Pega o cookie de sessão do ML nas variáveis de ambiente
-ML_COOKIE = os.getenv("ML_COOKIE", "")
+# Método SIMPLES: só precisa do ID de afiliado, sem cookie, sem API, sem expiração!
+ML_MATT_TOOL = os.getenv("ML_MATT_TOOL", "82883927")
+ML_MATT_WORD = os.getenv("ML_MATT_WORD", "matoscarlos20220825095337")
 
 def generate_ml_affiliate_link(product_url):
     """
-    Usa o endpoint interno do ML para gerar o link de afiliado usando o Cookie.
+    Gera link de afiliado simplesmente adicionando os parâmetros de rastreamento.
+    Não precisa de Cookie, não precisa de API, não expira NUNCA!
     """
-    if not ML_COOKIE:
-        return product_url # Retorna o original se não tiver o cookie configurado
-        
-    url = "https://www.mercadolivre.com.br/affiliate-program/api/v2/affiliates/createLink"
-    headers = {
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Cookie": ML_COOKIE
-    }
-    payload = {"url": product_url}
-    
-    try:
-        response = requests.post(url, json=payload, headers=headers)
-        if response.status_code == 200:
-            data = response.json()
-            return data.get("link", product_url)
-    except Exception as e:
-        print(f"Erro ao gerar link de afiliado: {e}")
-        
-    return product_url
+    separator = "&" if "?" in product_url else "?"
+    params = urlencode({
+        "matt_tool": ML_MATT_TOOL,
+        "matt_word": ML_MATT_WORD
+    })
+    return f"{product_url}{separator}{params}"
 
 def get_ml_promotions():
     """
-    Busca produtos reais em alta no Mercado Livre e tenta converter para link de afiliado.
+    Busca produtos reais em alta no Mercado Livre e converte para link de afiliado.
     """
-    queries = ["Placa de video", "Smartphone", "Smart TV", "Notebook", "Cartas Pokemon TCG"]
+    queries = [
+        "Placa de video", "Smartphone", "Smart TV 4K", "Notebook gamer",
+        "Cartas Pokemon TCG", "Fone bluetooth", "SSD 1TB", "Monitor gamer",
+        "Teclado mecanico", "Mouse gamer", "Webcam", "Cadeira gamer",
+        "Tablet", "Smartwatch", "Console videogame"
+    ]
     query = random.choice(queries)
     
-    url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}&limit=10"
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}&limit=20"
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
     
-    # Produtos de backup caso a API bloqueie (Erro 403)
-    backup_products = [
-        {
-            "name": "Smart TV 55 polegadas 4K Samsung",
-            "category": "TVs",
-            "original_price": "3499.00",
-            "discount_price": "2499.00",
-            "image_url": "https://http2.mlstatic.com/D_NQ_NP_895398-MLA45642874100_042021-O.jpg",
-            "affiliate_link": generate_ml_affiliate_link("https://produto.mercadolivre.com.br/MLB-3351980315-smart-tv-samsung-55-polegadas-crystal-uhd-4k-55cu7700-2023-_JM")
-        },
-        {
-            "name": "Smartphone Poco X6 Pro 5G 256GB",
-            "category": "Celulares",
-            "original_price": "2199.00",
-            "discount_price": "1799.00",
-            "image_url": "https://http2.mlstatic.com/D_NQ_NP_794270-MLA74070054707_012024-O.jpg",
-            "affiliate_link": generate_ml_affiliate_link("https://produto.mercadolivre.com.br/MLB-4552084534-smartphone-xiaomi-poco-x6-pro-5g-dual-sim-256gb-preto-8gb-ram-_JM")
-        },
-        {
-            "name": "Console Nintendo Switch OLED",
-            "category": "Videogames",
-            "original_price": "2499.00",
-            "discount_price": "1999.00",
-            "image_url": "https://http2.mlstatic.com/D_NQ_NP_727503-MLA48083818395_112021-O.jpg",
-            "affiliate_link": generate_ml_affiliate_link("https://produto.mercadolivre.com.br/MLB-3162776856-nintendo-switch-oled-64gb-standard-cor-branco-e-preto-_JM")
-        },
-        {
-            "name": "Notebook Gamer Acer Nitro 5",
-            "category": "Notebooks",
-            "original_price": "5499.00",
-            "discount_price": "4299.00",
-            "image_url": "https://http2.mlstatic.com/D_NQ_NP_779344-MLU74503798539_022024-O.jpg",
-            "affiliate_link": generate_ml_affiliate_link("https://produto.mercadolivre.com.br/MLB-3561936551-notebook-gamer-acer-nitro-5-intel-core-i5-8gb-512gb-gtx-1650-_JM")
-        }
-    ]
-    
-    # Sistema Anti-Repetição (Histórico em Memória Temporária)
+    # Sistema Anti-Repetição
     history_file = "/tmp/ml_history.txt"
     try:
         with open(history_file, "r") as f:
-            sent_names = f.read().splitlines()
+            sent_ids = f.read().splitlines()
     except FileNotFoundError:
-        sent_names = []
+        sent_ids = []
         
-    def save_history(name):
+    def save_history(product_id):
         try:
             with open(history_file, "a") as f:
-                f.write(f"{name}\n")
+                f.write(f"{product_id}\n")
         except Exception:
             pass
-            
-    def get_unused_backup():
-        unused = [p for p in backup_products if p["name"] not in sent_names]
-        if not unused:
-            open(history_file, "w").close() # Reseta se todos já foram
-            unused = backup_products
-        chosen = random.choice(unused)
-        save_history(chosen["name"])
-        return chosen
-        
+    
     try:
         response = requests.get(url, headers=headers)
         if response.status_code != 200:
-            return [get_unused_backup()]
+            print(f"ML API retornou status {response.status_code}, tentando outra query...")
+            # Tenta com outra query antes de desistir
+            query2 = random.choice([q for q in queries if q != query])
+            url2 = f"https://api.mercadolibre.com/sites/MLB/search?q={query2}&limit=20"
+            response = requests.get(url2, headers=headers)
+            if response.status_code != 200:
+                return []
             
         data = response.json()
         
-        if "results" not in data or len(data["results"]) == 0:
-            return [get_unused_backup()]
+        results = data.get("results", [])
+        if not results:
+            return []
+        
+        # Filtra produtos já enviados
+        new_products = [p for p in results if p.get("id", "") not in sent_ids]
+        if not new_products:
+            # Se todos já foram enviados, limpa o histórico e usa todos
+            try:
+                open(history_file, "w").close()
+            except Exception:
+                pass
+            new_products = results
             
-        product = random.choice(data["results"])
+        product = random.choice(new_products)
         
         price = product.get("price", 0)
-        original_price = product.get("original_price") or (price * 1.1)
+        original_price = product.get("original_price") or (price * 1.15)
         
         thumbnail = product.get("thumbnail", "")
+        # Converte thumbnail pequena para imagem grande
         image_url = thumbnail.replace("-I.jpg", "-O.jpg") if thumbnail else ""
         
         permalink = product.get("permalink", "")
         affiliate_link = generate_ml_affiliate_link(permalink)
+        
+        # Salva no histórico
+        save_history(product.get("id", ""))
         
         return [{
             "name": product.get("title", "Produto"),
@@ -132,4 +102,4 @@ def get_ml_promotions():
         
     except Exception as e:
         print(f"Erro ao buscar no ML: {e}")
-        return [random.choice(backup_products)]
+        return []
