@@ -100,7 +100,7 @@ def get_authorization_url(redirect_uri):
 
 
 def exchange_code(code, redirect_uri):
-    """Troca o authorization code pelos tokens (chamado no callback)."""
+    """Troca o authorization code pelos tokens. Retorna o token_data cru (sem salvar)."""
     data = {
         "grant_type": "authorization_code",
         "client_id": ML_CLIENT_ID,
@@ -110,7 +110,7 @@ def exchange_code(code, redirect_uri):
     }
     r = requests.post(TOKEN_URL, data=data, timeout=10)
     r.raise_for_status()
-    return save_tokens(r.json())
+    return r.json()
 
 
 def refresh_tokens(refresh_token):

@@ -136,14 +136,36 @@ def ml_callback():
     if not code:
         return jsonify({"status": "erro", "motivo": "code ausente na resposta do ML"}), 400
 
+    from ml_oauth import save_tokens
+    resultado = {"status": "sucesso"}
+
+    # 1) Troca o code pelos tokens
     try:
-        exchange_code(code, get_redirect_uri())
-        return jsonify({
-            "status": "sucesso",
-            "mensagem": "Autorização concluída! Tokens salvos no Vercel KV. O bot já pode buscar produtos reais."
-        })
+        token_data = exchange_code(code, get_redirect_uri())
     except Exception as e:
         return jsonify({"status": "erro", "motivo": f"Falha ao trocar o code: {e}"}), 500
+
+    # 2) Testa a API de busca do ML JÁ com o token recém-obtido (de-risk)
+    try:
+        rt = requests.get(
+            "https://api.mercadolibre.com/sites/MLB/search?q=jbl%20flip%206&limit=1",
+            headers={"Authorization": f"Bearer {token_data['access_token']}", "User-Agent": "Mozilla/5.0"},
+            timeout=10,
+        )
+        resultado["busca_status"] = rt.status_code
+        resultado["busca_resposta"] = rt.text[:600]
+    except Exception as e:
+        resultado["busca_erro"] = str(e)
+
+    # 3) Tenta salvar no KV
+    try:
+        save_tokens(token_data)
+        resultado["tokens_salvos"] = True
+    except Exception as e:
+        resultado["tokens_salvos"] = False
+        resultado["kv_erro"] = str(e)
+
+    return jsonify(resultado)
 
 @app.route('/api/cron')
 def trigger_cron():
