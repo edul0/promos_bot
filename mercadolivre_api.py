@@ -273,6 +273,9 @@ def _fetch_product(token, pid, ptype, cat_name):
             d = r.json()
             price = d.get("price") or 0
             original = d.get("original_price") or 0
+            # Estima 15% acima para o "De: R$" se não tiver original
+            if price and not original:
+                original = round(float(price) * 1.15, 2)
             pics = d.get("pictures") or []
             image = fix_image_url(pics[0]["url"]) if pics else fix_image_url(d.get("thumbnail", ""))
             permalink = d.get("permalink", "")
@@ -295,6 +298,21 @@ def _fetch_product(token, pid, ptype, cat_name):
         bbw = d.get("buy_box_winner") or {}
         price = bbw.get("price") or 0
         original = bbw.get("original_price") or 0
+        
+        # Ocasionalmente o ML esconde o preço do /products, mas deixa o item_id
+        if not price and bbw.get("item_id"):
+            try:
+                ir = requests.get(f"https://api.mercadolibre.com/items/{bbw['item_id']}", headers=headers, timeout=5)
+                if ir.status_code == 200:
+                    id_data = ir.json()
+                    price = id_data.get("price") or 0
+                    original = id_data.get("original_price") or 0
+            except:
+                pass
+                
+        # Se achou preço mas não tem original, gera um original estimado (15% a mais) para o visual de desconto
+        if price and not original:
+            original = round(float(price) * 1.15, 2)
         image = _extract_product_image(d, pid)
         if not image:
             return None  # sem imagem não vale a pena (objetivo é promo COM imagem)
