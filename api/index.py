@@ -119,6 +119,34 @@ def ml_debug():
         except Exception as e:
             testes[nome] = {"erro": str(e)}
     info["testes"] = testes
+
+    # Cadeia real: highlights -> pega 1º id -> busca o produto/item completo
+    # para descobrirmos o formato exato (preço, imagem, permalink).
+    try:
+        h = requests.get(
+            "https://api.mercadolibre.com/highlights/MLB/category/MLB1055",
+            headers=headers, timeout=10,
+        ).json()
+        first = h.get("content", [{}])[0]
+        pid = first.get("id")
+        ptype = first.get("type")
+        info["produto_id"] = pid
+        info["produto_type"] = ptype
+        if pid:
+            prod = requests.get(
+                f"https://api.mercadolibre.com/products/{pid}",
+                headers=headers, timeout=10,
+            )
+            info["products_status"] = prod.status_code
+            info["products_resp"] = prod.text[:1500]
+            it = requests.get(
+                f"https://api.mercadolibre.com/items/{pid}",
+                headers=headers, timeout=10,
+            )
+            info["items_status"] = it.status_code
+            info["items_resp"] = it.text[:600]
+    except Exception as e:
+        info["cadeia_erro"] = str(e)
     return jsonify(info)
 
 
