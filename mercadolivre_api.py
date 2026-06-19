@@ -47,7 +47,7 @@ def get_ml_promotions():
             "category": "TVs",
             "original_price": "3499.00",
             "discount_price": "2499.00",
-            "image_url": "https://http2.mlstatic.com/D_NQ_NP_895398-MLA45642874100_042021-O.webp",
+            "image_url": "https://http2.mlstatic.com/D_NQ_NP_895398-MLA45642874100_042021-O.jpg",
             "affiliate_link": generate_ml_affiliate_link("https://produto.mercadolivre.com.br/MLB-12345678-smart-tv-55")
         },
         {
@@ -55,7 +55,7 @@ def get_ml_promotions():
             "category": "Celulares",
             "original_price": "2199.00",
             "discount_price": "1799.00",
-            "image_url": "https://http2.mlstatic.com/D_NQ_NP_794270-MLA74070054707_012024-O.webp",
+            "image_url": "https://http2.mlstatic.com/D_NQ_NP_794270-MLA74070054707_012024-O.jpg",
             "affiliate_link": generate_ml_affiliate_link("https://produto.mercadolivre.com.br/MLB-87654321-poco-x6-pro")
         }
     ]

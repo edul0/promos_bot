@@ -70,7 +70,7 @@ def get_shopee_promotions():
             "category": "Cartas Pokémon",
             "original_price": "899.90",
             "discount_price": "649.90",
-            "image_url": "https://http2.mlstatic.com/D_NQ_NP_603831-MLU73100693998_112023-O.webp",
+            "image_url": "https://http2.mlstatic.com/D_NQ_NP_603831-MLU73100693998_112023-O.jpg",
             "affiliate_link": generate_shopee_short_link("https://shopee.com.br/produto/123")
         },
         {
@@ -78,7 +78,7 @@ def get_shopee_promotions():
             "category": "Peças de PC",
             "original_price": "2999.00",
             "discount_price": "2399.00",
-            "image_url": "https://http2.mlstatic.com/D_NQ_NP_908233-MLU72688048227_112023-O.webp",
+            "image_url": "https://http2.mlstatic.com/D_NQ_NP_908233-MLU72688048227_112023-O.jpg",
             "affiliate_link": generate_shopee_short_link("https://shopee.com.br/produto/456")
         }
     ]

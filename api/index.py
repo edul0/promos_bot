@@ -25,15 +25,23 @@ async def send_promotion_to_telegram(product):
     final_message = f"{ad_text}\n\n🛒 Compre aqui: {product['affiliate_link']}"
     
     try:
-        await bot.send_photo(
-            chat_id=TELEGRAM_CHAT_ID,
-            photo=product['image_url'],
-            caption=final_message
-        )
+        if product.get('image_url'):
+            await bot.send_photo(
+                chat_id=TELEGRAM_CHAT_ID,
+                photo=product['image_url'],
+                caption=final_message
+            )
+        else:
+            await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=final_message)
         return True
     except Exception as e:
-        print(f"Erro: {e}")
-        return False
+        print(f"Erro na foto: {e}. Enviando como texto...")
+        try:
+            await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=final_message)
+            return True
+        except Exception as e2:
+            print(f"Erro total: {e2}")
+            return False
 
 @app.route('/')
 def home():
