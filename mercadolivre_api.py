@@ -1,9 +1,10 @@
 import random
+import json
 import requests
 import os
 from urllib.parse import urlencode, quote
 
-from ml_oauth import get_valid_access_token
+from ml_oauth import get_valid_access_token, kv_get, kv_set
 from ml_affiliate import generate_official_affiliate_link
 
 ML_MATT_TOOL = os.getenv("ML_MATT_TOOL", "")
@@ -187,35 +188,45 @@ CATALOGO_PRODUTOS = [
 ]
 
 # Categorias do ML (Brasil) p/ os MAIS VENDIDOS via /highlights.
-# Formato: id -> (nome, peso). Peso maior = aparece com mais frequência.
+# Formato: id -> (nome, peso, filtro_nome_obrigatorio).
+# filtro_nome_obrigatorio: tuple de strings que DEVEM estar no nome do produto (case-insensitive).
+# None = sem filtro.
 ML_HIGHLIGHT_CATEGORIES = {
     # === DESTAQUE (peso alto) ===
-    "MLB3697": ("Fones de Ouvido", 4),
-    "MLB1132": ("Cartas Colecionáveis / Pokémon", 4),
-    "MLB1648": ("Informática e Peças de PC", 4),
+    "MLB3697": ("Fones de Ouvido", 4, None),
+    "MLB1132": ("Cartas Colecionáveis / Pokémon", 4, ("pokemon", "pokémon", "tcg")),  # MLB1132 é muito amplo; filtra por nome
+    "MLB1648": ("Informática e Peças de PC", 4, None),
     # === GERAIS (peso 1) ===
-    "MLB1000": ("Eletrônicos, Áudio e Vídeo", 1),
-    "MLB1144": ("Games", 1),
-    "MLB1051": ("Celulares e Telefones", 1),
-    "MLB1276": ("Esportes e Fitness", 1),
-    "MLB1039": ("Câmeras e Acessórios", 1),
-    "MLB5726": ("Eletrodomésticos", 1),
-    "MLB1574": ("Casa, Móveis e Decoração", 1),
+    "MLB1000": ("Eletrônicos, Áudio e Vídeo", 1, None),
+    "MLB1144": ("Games", 1, None),
+    "MLB1051": ("Celulares e Telefones", 1, None),
+    "MLB1276": ("Esportes e Fitness", 1, None),
+    "MLB1039": ("Câmeras e Acessórios", 1, None),
+    "MLB5726": ("Eletrodomésticos", 1, None),
+    "MLB1574": ("Casa, Móveis e Decoração", 1, None),
 }
 
 
 def _weighted_category_order():
     """Ordena as categorias dando prioridade às de maior peso (destaque)."""
     pool = []
-    for cid, (name, weight) in ML_HIGHLIGHT_CATEGORIES.items():
-        pool.extend([(cid, name)] * weight)
+    for cid, (name, weight, name_filter) in ML_HIGHLIGHT_CATEGORIES.items():
+        pool.extend([(cid, name, name_filter)] * weight)
     random.shuffle(pool)
     seen, order = set(), []
-    for cid, name in pool:
+    for cid, name, name_filter in pool:
         if cid not in seen:
             seen.add(cid)
-            order.append((cid, name))
+            order.append((cid, name, name_filter))
     return order
+
+
+def _passes_name_filter(product_name, name_filter):
+    """Retorna True se o produto passa no filtro de nome (ou se não há filtro)."""
+    if not name_filter:
+        return True
+    name_lower = product_name.lower()
+    return any(term in name_lower for term in name_filter)
 
 
 def _ml_headers(token):
@@ -346,11 +357,36 @@ def _fetch_product(token, pid, ptype, cat_name):
         return None
 
 
-def _get_from_highlights(token, sent_ids, save_history):
+HISTORY_KEY = "ml_sent_ids"
+HISTORY_MAX = 40  # guarda os últimos 40 IDs para evitar repetição
+
+
+def _load_history():
+    """Carrega o histórico de IDs enviados do KV."""
+    try:
+        raw = kv_get(HISTORY_KEY)
+        if raw:
+            return json.loads(raw)
+    except Exception:
+        pass
+    return []
+
+
+def _save_history(sent_ids, new_id):
+    """Adiciona new_id ao histórico e persiste no KV."""
+    updated = (sent_ids + [new_id])[-HISTORY_MAX:]
+    try:
+        kv_set(HISTORY_KEY, json.dumps(updated))
+    except Exception as e:
+        print(f"Erro ao salvar histórico no KV: {e}")
+    return updated
+
+
+def _get_from_highlights(token, sent_ids):
     """Pega os mais vendidos de uma categoria aleatória e monta a promo."""
     headers = _ml_headers(token)
     cats = _weighted_category_order()
-    for cat_id, cat_name in cats:
+    for cat_id, cat_name, name_filter in cats:
         try:
             hr = requests.get(
                 f"https://api.mercadolibre.com/highlights/MLB/category/{cat_id}",
@@ -360,17 +396,22 @@ def _get_from_highlights(token, sent_ids, save_history):
                 print(f"highlights {cat_id}: status {hr.status_code}")
                 continue
             content = hr.json().get("content", [])
+            # Prefere itens não enviados antes; senão tenta todos
             candidates = [c for c in content if c.get("id") not in sent_ids] or content
             random.shuffle(candidates)
-            for c in candidates[:6]:
+            for c in candidates[:8]:
                 pid, ptype = c.get("id"), c.get("type")
                 if not pid:
                     continue
                 promo = _fetch_product(token, pid, ptype, cat_name)
-                if promo:
-                    save_history(pid)
-                    print(f"[HIGHLIGHTS] {cat_name}: {promo['name']}")
-                    return promo
+                if not promo:
+                    continue
+                if not _passes_name_filter(promo["name"], name_filter):
+                    print(f"[FILTRO] Ignorado ({cat_name}): {promo['name']}")
+                    continue
+                _save_history(sent_ids, pid)
+                print(f"[HIGHLIGHTS] {cat_name}: {promo['name']}")
+                return promo
         except Exception as e:
             print(f"Erro highlights {cat_id}: {e}")
             continue
@@ -384,44 +425,27 @@ def get_ml_promotions():
     """
     access_token = get_valid_access_token()
 
-    # Sistema Anti-Repetição
-    history_file = "/tmp/ml_history.txt"
-    try:
-        with open(history_file, "r") as f:
-            sent_ids = f.read().splitlines()
-    except FileNotFoundError:
-        sent_ids = []
-
-    def save_history(product_id):
-        try:
-            with open(history_file, "a") as f:
-                f.write(f"{product_id}\n")
-        except Exception:
-            pass
+    # Histórico anti-repetição persistido no KV
+    sent_ids = _load_history()
 
     # === API AUTENTICADA: MAIS VENDIDOS ===
     if access_token:
-        promo = _get_from_highlights(access_token, sent_ids, save_history)
+        promo = _get_from_highlights(access_token, sent_ids)
         if promo:
             return [promo]
         print("Highlights não retornou produto; usando catálogo")
     else:
         print("Sem token do ML (autorize em /api/ml_auth); usando catálogo")
 
-
     # === FALLBACK: CATÁLOGO COM LINKS DE BUSCA ===
     print("Usando catálogo curado com links de busca")
 
     unused = [p for p in CATALOGO_PRODUTOS if p["name"] not in sent_ids]
     if not unused:
-        try:
-            open(history_file, "w").close()
-        except Exception:
-            pass
         unused = CATALOGO_PRODUTOS
 
     chosen = random.choice(unused)
-    save_history(chosen["name"])
+    _save_history(sent_ids, chosen["name"])
 
     # Gera link de BUSCA com afiliado (nunca quebra!)
     search_url = make_search_url(chosen["search_term"])
