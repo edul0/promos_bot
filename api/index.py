@@ -93,6 +93,47 @@ def home():
     return jsonify({"status": "Bot está online! Acesse /api/cron para disparar uma promoção."})
 
 
+@app.route('/api/cats')
+def cats():
+    """
+    Explorador de categorias do ML para achar IDs (ex.: TCG Pokémon).
+    Uso: /api/cats?id=MLB1132   ou   /api/cats?id=MLB1132&q=pokemon
+    """
+    from ml_oauth import get_valid_access_token
+    token = get_valid_access_token()
+    cat_id = request.args.get("id", "MLB1132")
+    q = (request.args.get("q") or "").lower()
+    headers = {"User-Agent": "Mozilla/5.0"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    def get_children(cid):
+        try:
+            r = requests.get(f"https://api.mercadolibre.com/categories/{cid}", headers=headers, timeout=10)
+            if r.status_code != 200:
+                return None, []
+            d = r.json()
+            return d.get("name", ""), [(c["id"], c["name"]) for c in d.get("children_categories", [])]
+        except Exception as e:
+            return f"erro: {e}", []
+
+    nome, filhos = get_children(cat_id)
+    resultado = {"categoria": cat_id, "nome": nome, "filhos": [{"id": i, "nome": n} for i, n in filhos]}
+
+    if q:
+        achados = []
+        for i, n in filhos:
+            if q in n.lower():
+                achados.append({"id": i, "nome": n})
+            # desce mais um nível procurando o termo
+            _, netos = get_children(i)
+            for gi, gn in netos:
+                if q in gn.lower():
+                    achados.append({"id": gi, "nome": gn})
+        resultado["achados"] = achados
+    return jsonify(resultado)
+
+
 @app.route('/api/ml_debug')
 def ml_debug():
     """Diagnóstico: mostra se há token e o que a API de busca do ML responde."""
