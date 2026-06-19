@@ -1,34 +1,45 @@
 import random
-from config import ML_APP_ID, ML_CLIENT_SECRET
+import requests
 
 def get_ml_promotions():
     """
-    Busca promoções no Mercado Livre.
-    COMO AS CHAVES AINDA NÃO FORAM CONFIGURADAS, ESTE É UM MOCK (DADOS FALSOS) PARA TESTAR O BOT.
+    Busca produtos reais em alta no Mercado Livre.
     """
-    if not ML_APP_ID or not ML_CLIENT_SECRET:
-        print("⚠️ Chaves do Mercado Livre não configuradas. Usando dados de teste (Mock).")
-        
-        mock_products = [
-            {
-                "name": "Smart TV 55 polegadas 4K Samsung",
-                "category": "TVs e Eletrônicos",
-                "original_price": "3499.00",
-                "discount_price": "2499.00",
-                "image_url": "https://http2.mlstatic.com/D_NQ_NP_895398-MLA45642874100_042021-O.webp",
-                "affiliate_link": "https://mercadolivre.com.br/sec/teste_afiliado_1"
-            },
-            {
-                "name": "Smartphone Poco X6 Pro 5G 256GB",
-                "category": "Celulares",
-                "original_price": "2199.00",
-                "discount_price": "1799.00",
-                "image_url": "https://http2.mlstatic.com/D_NQ_NP_794270-MLA74070054707_012024-O.webp",
-                "affiliate_link": "https://mercadolivre.com.br/sec/teste_afiliado_2"
-            }
-        ]
-        return [random.choice(mock_products)]
+    queries = ["Placa de video", "Smartphone", "Smart TV", "Notebook", "Cartas Pokemon TCG"]
+    query = random.choice(queries)
     
-    # Futura implementação real da API do Mercado Livre
-    # ...
-    return []
+    url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}&limit=10"
+    
+    try:
+        response = requests.get(url)
+        data = response.json()
+        
+        if "results" not in data or len(data["results"]) == 0:
+            return []
+            
+        # Pega um produto aleatório dos top 10 resultados
+        product = random.choice(data["results"])
+        
+        # O preço original e o preço com desconto (nem todos tem preço original)
+        price = product.get("price", 0)
+        original_price = product.get("original_price") or (price * 1.1) # Simula um desconto se não tiver
+        
+        # Pegar imagem em boa qualidade
+        thumbnail = product.get("thumbnail", "")
+        image_url = thumbnail.replace("-I.jpg", "-O.jpg") if thumbnail else ""
+        
+        # Link do produto (o usuário precisará converter para link de afiliado ou usar sua tag)
+        permalink = product.get("permalink", "")
+        
+        return [{
+            "name": product.get("title", "Produto"),
+            "category": query,
+            "original_price": f"{original_price:.2f}",
+            "discount_price": f"{price:.2f}",
+            "image_url": image_url,
+            "affiliate_link": permalink # AQUI DEPOIS PODEMOS ADICIONAR A TAG DE AFILIADO
+        }]
+        
+    except Exception as e:
+        print(f"Erro ao buscar no ML: {e}")
+        return []
