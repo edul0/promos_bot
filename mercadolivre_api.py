@@ -310,6 +310,22 @@ def _fetch_product(token, pid, ptype, cat_name):
             except:
                 pass
                 
+        # Se buy_box_winner for nulo ou não tiver item_id, busca o preço do produto via /search
+        if not price:
+            try:
+                prod_name = d.get("name", "")
+                if prod_name:
+                    from urllib.parse import quote
+                    q = quote(prod_name)
+                    search_r = requests.get(f"https://api.mercadolibre.com/sites/MLB/search?q={q}&limit=1", headers=headers, timeout=5)
+                    if search_r.status_code == 200:
+                        results = search_r.json().get("results", [])
+                        if results:
+                            price = results[0].get("price") or 0
+                            original = results[0].get("original_price") or 0
+            except:
+                pass
+                
         # Se achou preço mas não tem original, gera um original estimado (15% a mais) para o visual de desconto
         if price and not original:
             original = round(float(price) * 1.15, 2)
