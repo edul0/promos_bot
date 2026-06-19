@@ -321,18 +321,17 @@ def _fetch_product(token, pid, ptype, cat_name):
             except Exception:
                 pass
 
-        # Fallback: lista os itens do produto e pega o preço do mais barato
+        # Fallback: lista os itens do produto e pega o preço do item com mais vendas (sold_quantity)
         if not price:
             try:
                 ir = requests.get(f"https://api.mercadolibre.com/products/{pid}/items", headers=headers, timeout=5)
                 if ir.status_code == 200:
-                    items_data = ir.json()
-                    results = items_data.get("results") or []
-                    prices = [i.get("price") for i in results if i.get("price")]
-                    if prices:
-                        price = min(prices)
-                        origs = [i.get("original_price") for i in results if i.get("original_price")]
-                        original = max(origs) if origs else 0
+                    results = ir.json().get("results") or []
+                    if results:
+                        # Prefere o item com mais vendas (mais representativo do preço real)
+                        best = max(results, key=lambda i: i.get("sold_quantity") or 0)
+                        price = best.get("price") or 0
+                        original = best.get("original_price") or 0
             except Exception:
                 pass
                 

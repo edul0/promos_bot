@@ -42,16 +42,7 @@ async def send_promotion_to_telegram(product):
     except Exception:
         pass
 
-    price_line = ""
-    op = product.get('original_price', '')
-    dp = product.get('discount_price', '')
-    if dp and str(dp) not in ('0.00', '0', ''):
-        if op and str(op) not in ('0.00', '0', '') and op != dp:
-            price_line = f"\n\n❌ De: R$ {op}\n✅ Por: R$ {dp}"
-        else:
-            price_line = f"\n\n💰 Por: R$ {dp}"
-
-    final_message = f"{deal_banner}{ad_text}{price_line}\n\n🛒 Compre aqui: {product['affiliate_link']}"
+    final_message = f"{deal_banner}{ad_text}\n\n🛒 Compre aqui: {product['affiliate_link']}"
 
     # Telegram limita caption de fotos a 1024 caracteres!
     if len(final_message) > 1024:
