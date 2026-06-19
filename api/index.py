@@ -81,6 +81,36 @@ def home():
     return jsonify({"status": "Bot está online! Acesse /api/cron para disparar uma promoção."})
 
 
+@app.route('/api/ml_debug')
+def ml_debug():
+    """Diagnóstico: mostra se há token e o que a API de busca do ML responde."""
+    from ml_oauth import get_valid_access_token, KV_URL, KV_TOKEN
+    token = get_valid_access_token()
+    info = {
+        "kv_configurado": bool(KV_URL and KV_TOKEN),
+        "tem_token": bool(token),
+    }
+    if not token:
+        info["conclusao"] = "Sem token. KV vazio ou ML_CLIENT_SECRET ausente."
+        return jsonify(info)
+
+    test_url = "https://api.mercadolibre.com/sites/MLB/search?q=jbl%20flip%206&limit=1"
+    try:
+        r = requests.get(
+            test_url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "User-Agent": "Mozilla/5.0",
+            },
+            timeout=10,
+        )
+        info["busca_status"] = r.status_code
+        info["busca_resposta"] = r.text[:800]
+    except Exception as e:
+        info["busca_erro"] = str(e)
+    return jsonify(info)
+
+
 @app.route('/api/ml_auth')
 def ml_auth():
     """Passo 1 do OAuth: redireciona o usuário para autorizar o app no Mercado Livre."""
