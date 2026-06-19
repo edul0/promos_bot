@@ -80,19 +80,59 @@ def get_shopee_promotions():
             "discount_price": "2399.00",
             "image_url": "https://http2.mlstatic.com/D_NQ_NP_908233-MLU72688048227_112023-O.jpg",
             "affiliate_link": generate_shopee_short_link("https://shopee.com.br/produto/456")
+        },
+        {
+            "name": "Headset Gamer Sem Fio Logitech G733",
+            "category": "Acessórios Gamer",
+            "original_price": "1099.00",
+            "discount_price": "849.00",
+            "image_url": "https://http2.mlstatic.com/D_NQ_NP_895240-MLA43603417646_092020-O.jpg",
+            "affiliate_link": generate_shopee_short_link("https://shopee.com.br/produto/789")
+        },
+        {
+            "name": "Microfone Condensador Fifine Ampligame A8",
+            "category": "Equipamentos de Áudio",
+            "original_price": "499.00",
+            "discount_price": "299.00",
+            "image_url": "https://http2.mlstatic.com/D_NQ_NP_925232-CBT74659220914_022024-O.jpg",
+            "affiliate_link": generate_shopee_short_link("https://shopee.com.br/produto/101")
         }
     ]
+    
+    # Sistema Anti-Repetição (Histórico em Memória Temporária)
+    history_file = "/tmp/shopee_history.txt"
+    try:
+        with open(history_file, "r") as f:
+            sent_names = f.read().splitlines()
+    except FileNotFoundError:
+        sent_names = []
+        
+    def save_history(name):
+        try:
+            with open(history_file, "a") as f:
+                f.write(f"{name}\n")
+        except Exception:
+            pass
+            
+    def get_unused_backup():
+        unused = [p for p in backup_products if p["name"] not in sent_names]
+        if not unused:
+            open(history_file, "w").close() # Reseta se todos já foram
+            unused = backup_products
+        chosen = random.choice(unused)
+        save_history(chosen["name"])
+        return chosen
     
     try:
         response = requests.get(url, headers=headers)
         if response.status_code != 200:
-            return [random.choice(backup_products)]
+            return [get_unused_backup()]
             
         data = response.json()
         
         items = data.get("items", [])
         if not items:
-            return [random.choice(backup_products)]
+            return [get_unused_backup()]
             
         item_data = random.choice(items)
         item = item_data.get("item_basic", item_data)

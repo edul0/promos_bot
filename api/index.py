@@ -1,5 +1,7 @@
 import os
 import asyncio
+import io
+import requests
 from flask import Flask, jsonify
 
 # Adiciona o diretório pai ao path para conseguir importar os módulos
@@ -26,11 +28,17 @@ async def send_promotion_to_telegram(product):
     
     try:
         if product.get('image_url'):
-            await bot.send_photo(
-                chat_id=TELEGRAM_CHAT_ID,
-                photo=product['image_url'],
-                caption=final_message
-            )
+            # Baixa a imagem internamente para evitar que o Telegram seja bloqueado pelo ML
+            response = requests.get(product['image_url'], headers={'User-Agent': 'Mozilla/5.0'})
+            if response.status_code == 200:
+                photo_bytes = io.BytesIO(response.content)
+                await bot.send_photo(
+                    chat_id=TELEGRAM_CHAT_ID,
+                    photo=photo_bytes,
+                    caption=final_message
+                )
+            else:
+                await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=final_message)
         else:
             await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=final_message)
         return True

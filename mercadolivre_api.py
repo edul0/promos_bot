@@ -57,18 +57,58 @@ def get_ml_promotions():
             "discount_price": "1799.00",
             "image_url": "https://http2.mlstatic.com/D_NQ_NP_794270-MLA74070054707_012024-O.jpg",
             "affiliate_link": generate_ml_affiliate_link("https://produto.mercadolivre.com.br/MLB-4552084534-smartphone-xiaomi-poco-x6-pro-5g-dual-sim-256gb-preto-8gb-ram-_JM")
+        },
+        {
+            "name": "Console Nintendo Switch OLED",
+            "category": "Videogames",
+            "original_price": "2499.00",
+            "discount_price": "1999.00",
+            "image_url": "https://http2.mlstatic.com/D_NQ_NP_727503-MLA48083818395_112021-O.jpg",
+            "affiliate_link": generate_ml_affiliate_link("https://produto.mercadolivre.com.br/MLB-3162776856-nintendo-switch-oled-64gb-standard-cor-branco-e-preto-_JM")
+        },
+        {
+            "name": "Notebook Gamer Acer Nitro 5",
+            "category": "Notebooks",
+            "original_price": "5499.00",
+            "discount_price": "4299.00",
+            "image_url": "https://http2.mlstatic.com/D_NQ_NP_779344-MLU74503798539_022024-O.jpg",
+            "affiliate_link": generate_ml_affiliate_link("https://produto.mercadolivre.com.br/MLB-3561936551-notebook-gamer-acer-nitro-5-intel-core-i5-8gb-512gb-gtx-1650-_JM")
         }
     ]
     
+    # Sistema Anti-Repetição (Histórico em Memória Temporária)
+    history_file = "/tmp/ml_history.txt"
+    try:
+        with open(history_file, "r") as f:
+            sent_names = f.read().splitlines()
+    except FileNotFoundError:
+        sent_names = []
+        
+    def save_history(name):
+        try:
+            with open(history_file, "a") as f:
+                f.write(f"{name}\n")
+        except Exception:
+            pass
+            
+    def get_unused_backup():
+        unused = [p for p in backup_products if p["name"] not in sent_names]
+        if not unused:
+            open(history_file, "w").close() # Reseta se todos já foram
+            unused = backup_products
+        chosen = random.choice(unused)
+        save_history(chosen["name"])
+        return chosen
+        
     try:
         response = requests.get(url, headers=headers)
         if response.status_code != 200:
-            return [random.choice(backup_products)]
+            return [get_unused_backup()]
             
         data = response.json()
         
         if "results" not in data or len(data["results"]) == 0:
-            return [random.choice(backup_products)]
+            return [get_unused_backup()]
             
         product = random.choice(data["results"])
         
