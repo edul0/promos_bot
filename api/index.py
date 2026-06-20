@@ -94,6 +94,42 @@ def home():
     return jsonify({"status": "Bot está online! Acesse /api/cron para disparar uma promoção."})
 
 
+@app.route('/api/shopee_debug')
+def shopee_debug():
+    """
+    Mostra o cabeçalho (colunas) e a 1ª linha do feed da Shopee,
+    pra mapear corretamente a coluna do link de afiliado.
+    """
+    import csv as _csv
+    import io as _io
+    from shopee_api import SHOPEE_FEED_URLS, _detect_columns
+
+    if not SHOPEE_FEED_URLS:
+        return jsonify({"erro": "SHOPEE_FEED_URL_1/2 não configurados na Vercel"})
+
+    url = SHOPEE_FEED_URLS[0]
+    try:
+        r = requests.get(url, timeout=25, headers={"User-Agent": "Mozilla/5.0"})
+        content = r.content.decode("utf-8-sig", errors="replace")
+        sample = content[:2000]
+        delimiter = "\t" if sample.count("\t") > sample.count(",") else ","
+        rows = list(_csv.reader(_io.StringIO(content), delimiter=delimiter))
+        header = rows[0] if rows else []
+        first = rows[1] if len(rows) > 1 else []
+        cols = _detect_columns(header)
+        return jsonify({
+            "status": r.status_code,
+            "delimitador": "TAB" if delimiter == "\t" else "VIRGULA",
+            "total_linhas": len(rows),
+            "colunas": header,
+            "colunas_detectadas": cols,
+            "primeira_linha": {header[i] if i < len(header) else str(i): v
+                               for i, v in enumerate(first)},
+        })
+    except Exception as e:
+        return jsonify({"erro": str(e)})
+
+
 @app.route('/api/cats')
 def cats():
     """
