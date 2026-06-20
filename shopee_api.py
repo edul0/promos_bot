@@ -35,11 +35,18 @@ CATEGORY_FILTERS = {
     ],
 }
 
-MIN_DISCOUNT_PCT = 10
+# Feed da Shopee costuma trazer discount=0; não exige desconto, mas prioriza quem tem
+MIN_DISCOUNT_PCT = 0
 
 
 def _detect_columns(header_row):
     h = [c.strip().lower() for c in header_row]
+
+    def exact(name):
+        for i, col in enumerate(h):
+            if col == name:
+                return i
+        return None
 
     def find(*candidates, exclude=()):
         for c in candidates:
@@ -49,14 +56,20 @@ def _detect_columns(header_row):
         return None
 
     return {
-        "name":     find("item_name", "product_name", "name", "produto", "title"),
-        "price":    find("sale_price", "item_price", "price", "preco", "preço", exclude=("original", "market")),
-        "original": find("original_price", "market_price", "list_price", "preco_original"),
-        "image":    find("image", "imagem", "img"),
-        # O link de afiliado NUNCA é a coluna de imagem — exclui "image"/"img"
-        "url":      find("offer_link", "affiliate_link", "product_link", "item_url", "product_url",
-                         "url", "link", exclude=("image", "img", "imagem", "shop")),
-        "category": find("category", "categoria", exclude=("sub",)) or find("category", "categoria"),
+        "name":     exact("title") or exact("item_name") or exact("product_name") or
+                    find("title", "item_name", "product_name", "produto") or
+                    find("name", exclude=("model", "shop", "file")),
+        # sale_price = preço com desconto (atual); price = preço cheio (original)
+        "price":    find("sale_price", "item_price", "preco", "preço") or exact("price"),
+        "original": find("original_price", "market_price", "list_price", "preco_original") or exact("price"),
+        # prefere o image_link principal, senão qualquer imagem
+        "image":    exact("image_link") or find("image", "imagem", "img"),
+        # Link de AFILIADO = o "short link" (shope.ee). Nunca o product_link cru nem imagem.
+        "url":      find("short link", "short_link", "offer_link", "affiliate", "shope.ee",
+                         exclude=("image", "img")) or
+                    find("product_link", "item_url", "product_url",
+                         exclude=("image", "img", "short")),
+        "category": find("global_category3", "global_category", "category", "categoria"),
         "discount": find("discount", "desconto"),
         "sales":    find("item_sales", "historical_sold", "sold", "sales", "vendas"),
     }
