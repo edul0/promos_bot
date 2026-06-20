@@ -62,18 +62,40 @@ def _detect_columns(header_row):
     }
 
 
-def _parse_feed(url):
-    try:
-        r = requests.get(url, timeout=25, headers={"User-Agent": "Mozilla/5.0"})
+MAX_FEED_BYTES = 4 * 1024 * 1024  # lê no máx ~4MB do feed (evita timeout/memória na Vercel)
+
+
+def _download_feed_text(url, max_bytes=MAX_FEED_BYTES):
+    """Baixa o feed em streaming, parando após max_bytes (feeds Shopee são enormes)."""
+    chunks, total = [], 0
+    with requests.get(url, timeout=9, stream=True,
+                      headers={"User-Agent": "Mozilla/5.0"}) as r:
         if r.status_code != 200:
             print(f"[SHOPEE] Feed retornou {r.status_code}")
+            return None
+        for chunk in r.iter_content(chunk_size=65536):
+            if not chunk:
+                continue
+            chunks.append(chunk)
+            total += len(chunk)
+            if total >= max_bytes:
+                break
+    return b"".join(chunks).decode("utf-8-sig", errors="replace")
+
+
+def _parse_feed(url):
+    try:
+        content = _download_feed_text(url)
+        if not content:
             return []
 
-        content = r.content.decode("utf-8-sig", errors="replace")
         sample = content[:2000]
         delimiter = "\t" if sample.count("\t") > sample.count(",") else ","
         reader = csv.reader(io.StringIO(content), delimiter=delimiter)
         rows = list(reader)
+        # Descarta a última linha (pode estar cortada pelo limite de bytes)
+        if len(rows) > 2:
+            rows = rows[:-1]
         if not rows:
             return []
 

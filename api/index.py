@@ -102,15 +102,17 @@ def shopee_debug():
     """
     import csv as _csv
     import io as _io
-    from shopee_api import SHOPEE_FEED_URLS, _detect_columns
+    from shopee_api import SHOPEE_FEED_URLS, _detect_columns, _download_feed_text
 
     if not SHOPEE_FEED_URLS:
         return jsonify({"erro": "SHOPEE_FEED_URL_1/2 não configurados na Vercel"})
 
     url = SHOPEE_FEED_URLS[0]
     try:
-        r = requests.get(url, timeout=25, headers={"User-Agent": "Mozilla/5.0"})
-        content = r.content.decode("utf-8-sig", errors="replace")
+        # Só os primeiros ~200KB bastam pra ver cabeçalho + 1ª linha
+        content = _download_feed_text(url, max_bytes=200 * 1024)
+        if not content:
+            return jsonify({"erro": "feed vazio ou status != 200"})
         sample = content[:2000]
         delimiter = "\t" if sample.count("\t") > sample.count(",") else ","
         rows = list(_csv.reader(_io.StringIO(content), delimiter=delimiter))
@@ -118,16 +120,16 @@ def shopee_debug():
         first = rows[1] if len(rows) > 1 else []
         cols = _detect_columns(header)
         return jsonify({
-            "status": r.status_code,
             "delimitador": "TAB" if delimiter == "\t" else "VIRGULA",
-            "total_linhas": len(rows),
+            "qtd_colunas": len(header),
             "colunas": header,
             "colunas_detectadas": cols,
-            "primeira_linha": {header[i] if i < len(header) else str(i): v
+            "primeira_linha": {(header[i] if i < len(header) else str(i)): v
                                for i, v in enumerate(first)},
         })
     except Exception as e:
-        return jsonify({"erro": str(e)})
+        import traceback
+        return jsonify({"erro": str(e), "trace": traceback.format_exc()[:500]})
 
 
 @app.route('/api/cats')
