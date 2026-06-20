@@ -356,11 +356,11 @@ def _fetch_product(token, pid, ptype, cat_name):
 
 
 HISTORY_KEY = "ml_sent_ids"
-HISTORY_MAX = 40  # guarda os últimos 40 IDs para evitar repetição
+LAST_CAT_KEY = "ml_last_cat"
+HISTORY_MAX = 60
 
 
 def _load_history():
-    """Carrega o histórico de IDs enviados do KV."""
     try:
         raw = kv_get(HISTORY_KEY)
         if raw:
@@ -370,20 +370,33 @@ def _load_history():
     return []
 
 
-def _save_history(sent_ids, new_id):
-    """Adiciona new_id ao histórico e persiste no KV."""
+def _save_history(sent_ids, new_id, cat_id):
     updated = (sent_ids + [new_id])[-HISTORY_MAX:]
     try:
         kv_set(HISTORY_KEY, json.dumps(updated))
+        kv_set(LAST_CAT_KEY, cat_id)
     except Exception as e:
         print(f"Erro ao salvar histórico no KV: {e}")
     return updated
 
 
+def _load_last_cat():
+    try:
+        return kv_get(LAST_CAT_KEY) or ""
+    except Exception:
+        return ""
+
+
 def _get_from_highlights(token, sent_ids):
-    """Pega os mais vendidos de uma categoria aleatória e monta a promo."""
+    """Pega os mais vendidos de uma categoria diferente da última usada."""
     headers = _ml_headers(token)
+    last_cat = _load_last_cat()
     cats = _weighted_category_order()
+
+    # Move a última categoria usada pro final para evitar repetição imediata
+    if last_cat:
+        cats = [c for c in cats if c[0] != last_cat] + [c for c in cats if c[0] == last_cat]
+
     for cat_id, cat_name, name_filter in cats:
         try:
             hr = requests.get(
@@ -394,8 +407,10 @@ def _get_from_highlights(token, sent_ids):
                 print(f"highlights {cat_id}: status {hr.status_code}")
                 continue
             content = hr.json().get("content", [])
-            # Prefere itens não enviados antes; senão tenta todos
-            candidates = [c for c in content if c.get("id") not in sent_ids] or content
+            candidates = [c for c in content if c.get("id") not in sent_ids]
+            if not candidates:
+                print(f"[SKIP] {cat_name}: todos os {len(content)} itens já enviados")
+                continue  # pula categoria esgotada, NÃO repete
             random.shuffle(candidates)
             for c in candidates[:8]:
                 pid, ptype = c.get("id"), c.get("type")
@@ -407,12 +422,20 @@ def _get_from_highlights(token, sent_ids):
                 if not _passes_name_filter(promo["name"], name_filter):
                     print(f"[FILTRO] Ignorado ({cat_name}): {promo['name']}")
                     continue
-                _save_history(sent_ids, pid)
+                _save_history(sent_ids, pid, cat_id)
                 print(f"[HIGHLIGHTS] {cat_name}: {promo['name']}")
                 return promo
         except Exception as e:
             print(f"Erro highlights {cat_id}: {e}")
             continue
+
+    # Todas as categorias esgotadas — reseta histórico e tenta de novo
+    print("[RESET] Todas as categorias esgotadas, limpando histórico")
+    try:
+        kv_set(HISTORY_KEY, json.dumps([]))
+        kv_set(LAST_CAT_KEY, "")
+    except Exception:
+        pass
     return None
 
 
@@ -443,7 +466,7 @@ def get_ml_promotions():
         unused = CATALOGO_PRODUTOS
 
     chosen = random.choice(unused)
-    _save_history(sent_ids, chosen["name"])
+    _save_history(sent_ids, chosen["name"], "catalogo")
 
     # Gera link de BUSCA com afiliado (nunca quebra!)
     search_url = make_search_url(chosen["search_term"])
