@@ -41,22 +41,24 @@ MIN_DISCOUNT_PCT = 10
 def _detect_columns(header_row):
     h = [c.strip().lower() for c in header_row]
 
-    def find(*candidates):
+    def find(*candidates, exclude=()):
         for c in candidates:
             for i, col in enumerate(h):
-                if c in col:
+                if c in col and not any(x in col for x in exclude):
                     return i
         return None
 
     return {
-        "name":     find("item_name", "name", "produto", "title"),
-        "price":    find("item_price", "sale_price", "price", "preco", "preço"),
-        "original": find("original_price", "market_price", "preco_original"),
-        "image":    find("item_image", "image", "imagem", "img"),
-        "url":      find("item_url", "affiliate_link", "url", "link"),
-        "category": find("item_category", "category", "categoria"),
+        "name":     find("item_name", "product_name", "name", "produto", "title"),
+        "price":    find("sale_price", "item_price", "price", "preco", "preço", exclude=("original", "market")),
+        "original": find("original_price", "market_price", "list_price", "preco_original"),
+        "image":    find("image", "imagem", "img"),
+        # O link de afiliado NUNCA é a coluna de imagem — exclui "image"/"img"
+        "url":      find("offer_link", "affiliate_link", "product_link", "item_url", "product_url",
+                         "url", "link", exclude=("image", "img", "imagem", "shop")),
+        "category": find("category", "categoria", exclude=("sub",)) or find("category", "categoria"),
         "discount": find("discount", "desconto"),
-        "sales":    find("item_sales", "sold", "sales", "vendas"),
+        "sales":    find("item_sales", "historical_sold", "sold", "sales", "vendas"),
     }
 
 
@@ -95,6 +97,14 @@ def _parse_feed(url):
             category = g("category")
             discount = g("discount")
             sales    = g("sales")
+
+            # Segurança: se "link" e "imagem" estiverem trocados, corrige
+            img_exts = (".jpg", ".jpeg", ".png", ".webp", ".gif")
+            if url_link.lower().endswith(img_exts) and not image.lower().endswith(img_exts):
+                url_link, image = image, url_link
+            # Se o link de compra ainda for uma imagem, descarta o produto
+            if url_link.lower().endswith(img_exts):
+                continue
 
             if not name or not url_link:
                 continue
