@@ -1,165 +1,193 @@
+"""
+Integração com o Feed de Produto da Shopee Afiliados.
+Foco: Cartas Pokémon TCG + Periféricos e Peças de PC.
+
+Configurar na Vercel:
+    SHOPEE_FEED_URL_1  -> link do feed "Shopee Oficial BR"
+    SHOPEE_FEED_URL_2  -> link do feed "Shopee Brasil"
+"""
+import os
+import csv
+import io
 import random
 import requests
-import os
-import time
-import hmac
-import hashlib
-import json
 
-# Pegando as chaves da Shopee
-SHOPEE_APP_ID = os.getenv("SHOPEE_APP_ID", "")
-SHOPEE_APP_SECRET = os.getenv("SHOPEE_APP_SECRET", "")
+SHOPEE_FEED_URLS = [
+    u for u in [
+        os.getenv("SHOPEE_FEED_URL_1", ""),
+        os.getenv("SHOPEE_FEED_URL_2", ""),
+    ] if u
+]
 
-def generate_shopee_signature(path, timestamp):
-    """
-    Gera a assinatura HMAC-SHA256 necessária para a API da Shopee.
-    """
-    base_string = f"{SHOPEE_APP_ID}{path}{timestamp}"
-    return hmac.new(
-        SHOPEE_APP_SECRET.encode('utf-8'), 
-        base_string.encode('utf-8'), 
-        hashlib.sha256
-    ).hexdigest()
+# Shopee: foco em Pokémon TCG e peças/periféricos de PC
+CATEGORY_FILTERS = {
+    "Cartas Pokémon TCG": [
+        "pokemon", "pokémon", "tcg", "carta pokemon", "booster pokemon",
+        "copag pokemon", "pikachu", "mewtwo", "charizard", "eevee",
+        "gengar", "umbreon", "vstar", "vmax",
+    ],
+    "Periféricos e Peças de PC": [
+        "ssd", "nvme", "hdd", "memória ram", "ram ddr", "placa de vídeo",
+        "placa mae", "placa mãe", "processador", "cooler", "water cooler",
+        "gabinete", "fonte atx", "mouse gamer", "teclado gamer",
+        "teclado mecânico", "monitor gamer", "monitor 144hz", "monitor 165hz",
+        "headset gamer", "webcam", "mousepad gamer", "hub usb",
+    ],
+}
 
-def generate_shopee_short_link(long_url):
-    """
-    Converte um link normal da Shopee em um link curto de afiliado.
-    """
-    if not SHOPEE_APP_ID or not SHOPEE_APP_SECRET:
-        return long_url # Retorna sem afiliar se não tiver as chaves
-        
-    path = "/api/v2/affiliate/generate_short_link" # Rota da Open API de Afiliados da Shopee
-    timestamp = int(time.time())
-    sign = generate_shopee_signature(path, timestamp)
-    
-    url = f"https://partner.shopeemobile.com{path}"
-    headers = {"Content-Type": "application/json"}
-    payload = {
-        "query": f"""
-        mutation {{
-            generateShortLink(input: {{ originUrl: "{long_url}", subIds: ["bot_telegram"] }}) {{
-                shortLink
-            }}
-        }}
-        """
+MIN_DISCOUNT_PCT = 10
+
+
+def _detect_columns(header_row):
+    h = [c.strip().lower() for c in header_row]
+
+    def find(*candidates):
+        for c in candidates:
+            for i, col in enumerate(h):
+                if c in col:
+                    return i
+        return None
+
+    return {
+        "name":     find("item_name", "name", "produto", "title"),
+        "price":    find("item_price", "sale_price", "price", "preco", "preço"),
+        "original": find("original_price", "market_price", "preco_original"),
+        "image":    find("item_image", "image", "imagem", "img"),
+        "url":      find("item_url", "affiliate_link", "url", "link"),
+        "category": find("item_category", "category", "categoria"),
+        "discount": find("discount", "desconto"),
+        "sales":    find("item_sales", "sold", "sales", "vendas"),
     }
-    
-    # A Shopee usa GraphQL no Open API
-    try:
-        # Obs: A rota exata pode variar entre GraphQL ou REST dependendo da versão.
-        # Estamos implementando um fallback simples. Se não der, retornamos o link.
-        pass 
-    except:
-        pass
-        
-    return long_url
 
-def get_shopee_promotions():
-    """
-    Busca produtos na Shopee usando a API pública e tenta gerar o link de afiliado.
-    """
-    queries = ["Placa de video", "Smartphone", "Smart TV", "Notebook", "Cartas Pokemon TCG"]
-    query = random.choice(queries)
-    
-    url = f"https://shopee.com.br/api/v4/search/search_items?keyword={query}&limit=10"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    
-    backup_products = [
-        {
-            "name": "Box Booster Pokémon TCG Escarlate e Violeta 151",
-            "category": "Cartas Pokémon",
-            "original_price": "899.90",
-            "discount_price": "649.90",
-            "image_url": "https://http2.mlstatic.com/D_NQ_NP_603831-MLU73100693998_112023-O.jpg",
-            "affiliate_link": generate_shopee_short_link("https://shopee.com.br/produto/123")
-        },
-        {
-            "name": "Placa de Vídeo RTX 4060 Ti 8GB",
-            "category": "Peças de PC",
-            "original_price": "2999.00",
-            "discount_price": "2399.00",
-            "image_url": "https://http2.mlstatic.com/D_NQ_NP_908233-MLU72688048227_112023-O.jpg",
-            "affiliate_link": generate_shopee_short_link("https://shopee.com.br/produto/456")
-        },
-        {
-            "name": "Headset Gamer Sem Fio Logitech G733",
-            "category": "Acessórios Gamer",
-            "original_price": "1099.00",
-            "discount_price": "849.00",
-            "image_url": "https://http2.mlstatic.com/D_NQ_NP_895240-MLA43603417646_092020-O.jpg",
-            "affiliate_link": generate_shopee_short_link("https://shopee.com.br/produto/789")
-        },
-        {
-            "name": "Microfone Condensador Fifine Ampligame A8",
-            "category": "Equipamentos de Áudio",
-            "original_price": "499.00",
-            "discount_price": "299.00",
-            "image_url": "https://http2.mlstatic.com/D_NQ_NP_925232-CBT74659220914_022024-O.jpg",
-            "affiliate_link": generate_shopee_short_link("https://shopee.com.br/produto/101")
-        }
-    ]
-    
-    # Sistema Anti-Repetição (Histórico em Memória Temporária)
-    history_file = "/tmp/shopee_history.txt"
+
+def _parse_feed(url):
     try:
-        with open(history_file, "r") as f:
-            sent_names = f.read().splitlines()
-    except FileNotFoundError:
-        sent_names = []
-        
-    def save_history(name):
-        try:
-            with open(history_file, "a") as f:
-                f.write(f"{name}\n")
-        except Exception:
-            pass
-            
-    def get_unused_backup():
-        unused = [p for p in backup_products if p["name"] not in sent_names]
-        if not unused:
-            open(history_file, "w").close() # Reseta se todos já foram
-            unused = backup_products
-        chosen = random.choice(unused)
-        save_history(chosen["name"])
-        return chosen
-    
-    try:
-        response = requests.get(url, headers=headers)
-        if response.status_code != 200:
-            return [get_unused_backup()]
-            
-        data = response.json()
-        
-        items = data.get("items", [])
-        if not items:
-            return [get_unused_backup()]
-            
-        item_data = random.choice(items)
-        item = item_data.get("item_basic", item_data)
-        
-        name = item.get("name", "Produto Shopee")
-        price = item.get("price", 0) / 100000 
-        original_price = item.get("price_before_discount", 0) / 100000
-        if original_price == 0: original_price = price * 1.1
-        
-        image_id = item.get("image", "")
-        image_url = f"https://cf.shopee.com.br/file/{image_id}" if image_id else ""
-        
-        itemid = item.get("itemid", "")
-        shopid = item.get("shopid", "")
-        permalink = f"https://shopee.com.br/product/{shopid}/{itemid}"
-        
-        affiliate_link = generate_shopee_short_link(permalink)
-        
-        return [{
-            "name": name,
-            "category": query,
-            "original_price": f"{original_price:.2f}",
-            "discount_price": f"{price:.2f}",
-            "image_url": image_url,
-            "affiliate_link": affiliate_link
-        }]
-        
+        r = requests.get(url, timeout=25, headers={"User-Agent": "Mozilla/5.0"})
+        if r.status_code != 200:
+            print(f"[SHOPEE] Feed retornou {r.status_code}")
+            return []
+
+        content = r.content.decode("utf-8-sig", errors="replace")
+        sample = content[:2000]
+        delimiter = "\t" if sample.count("\t") > sample.count(",") else ","
+        reader = csv.reader(io.StringIO(content), delimiter=delimiter)
+        rows = list(reader)
+        if not rows:
+            return []
+
+        cols = _detect_columns(rows[0])
+        print(f"[SHOPEE] Colunas detectadas: { {k: v for k, v in cols.items() if v is not None} }")
+
+        products = []
+        for row in rows[1:]:
+            if len(row) < 3:
+                continue
+
+            def g(key):
+                idx = cols.get(key)
+                return row[idx].strip() if idx is not None and idx < len(row) else ""
+
+            name     = g("name")
+            price    = g("price")
+            original = g("original")
+            image    = g("image")
+            url_link = g("url")
+            category = g("category")
+            discount = g("discount")
+            sales    = g("sales")
+
+            if not name or not url_link:
+                continue
+
+            try:
+                p = float(price.replace(",", ".")) if price else 0
+                o = float(original.replace(",", ".")) if original else 0
+                disc_str = discount.replace("%", "").strip()
+                disc_pct = int(float(disc_str)) if disc_str else 0
+                if not disc_pct and p and o and o > p:
+                    disc_pct = round((1 - p / o) * 100)
+            except Exception:
+                p, o, disc_pct = 0, 0, 0
+
+            products.append({
+                "name":           name,
+                "price":          p,
+                "original_price": o,
+                "discount_pct":   disc_pct,
+                "image_url":      image,
+                "affiliate_link": url_link,
+                "category_raw":   category,
+                "sales":          int(sales) if str(sales).isdigit() else 0,
+            })
+
+        print(f"[SHOPEE] {len(products)} produtos no feed")
+        return products
     except Exception as e:
-        print(f"Erro na busca da Shopee: {e}")
-        return [random.choice(backup_products)]
+        print(f"[SHOPEE] Erro ao parsear feed: {e}")
+        return []
+
+
+def _match_category(product):
+    text = f"{product['name']} {product['category_raw']}".lower()
+    for cat_name, keywords in CATEGORY_FILTERS.items():
+        if any(kw in text for kw in keywords):
+            return cat_name
+    return None
+
+
+def get_shopee_promotion(sent_ids=None):
+    """
+    Retorna 1 produto da Shopee nas categorias de interesse com desconto.
+    Retorna None se feeds não configurados ou sem produto elegível.
+    """
+    if not SHOPEE_FEED_URLS:
+        print("[SHOPEE] Env vars SHOPEE_FEED_URL_1/2 não configurados")
+        return None
+
+    sent_ids = sent_ids or []
+    all_products = []
+
+    urls = SHOPEE_FEED_URLS[:]
+    random.shuffle(urls)
+    for url in urls:
+        products = _parse_feed(url)
+        all_products.extend(products)
+        if len(all_products) >= 200:
+            break
+
+    if not all_products:
+        return None
+
+    filtered = []
+    for p in all_products:
+        cat = _match_category(p)
+        if not cat:
+            continue
+        if p["discount_pct"] < MIN_DISCOUNT_PCT:
+            continue
+        if p["affiliate_link"] in sent_ids:
+            continue
+        p["category"] = cat
+        filtered.append(p)
+
+    print(f"[SHOPEE] {len(filtered)} elegíveis (Pokémon TCG + PC)")
+    if not filtered:
+        return None
+
+    # Ordena por desconto * popularidade, escolhe aleatório entre top 10
+    filtered.sort(key=lambda x: x["discount_pct"] * (1 + x["sales"] / 1000), reverse=True)
+    chosen = random.choice(filtered[:10])
+
+    op = f"{chosen['original_price']:.2f}" if chosen["original_price"] else ""
+    dp = f"{chosen['price']:.2f}" if chosen["price"] else ""
+
+    print(f"[SHOPEE] Escolhido: {chosen['name']} — {chosen['discount_pct']}% OFF")
+    return {
+        "name":           chosen["name"],
+        "category":       chosen["category"],
+        "original_price": op,
+        "discount_price": dp,
+        "image_url":      chosen["image_url"],
+        "affiliate_link": chosen["affiliate_link"],
+        "source":         "shopee",
+    }

@@ -11,7 +11,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 from ai_generator import generate_ad_text
 from mercadolivre_api import get_ml_promotions
-from ml_oauth import get_authorization_url, exchange_code
+from shopee_api import get_shopee_promotion
+from ml_oauth import get_authorization_url, exchange_code, kv_get, kv_set
 from telegram import Bot
 
 app = Flask(__name__)
@@ -255,24 +256,41 @@ def ml_callback():
 def trigger_cron():
     """
     Endpoint chamado pela Vercel Cron ou manualmente para disparar promoção.
-    Envia apenas 1 promoção do Mercado Livre por vez.
+    Alterna automaticamente entre Mercado Livre e Shopee a cada chamada.
     """
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return jsonify({"error": "Chaves do Telegram não configuradas no ambiente."}), 500
 
-    ml_promos = get_ml_promotions()
-    
-    if not ml_promos:
-        return jsonify({"status": "erro", "motivo": "Nenhuma promoção encontrada no ML"}), 500
-    
-    produto = ml_promos[0]
+    # Alterna entre fontes: ML → Shopee → ML → Shopee...
+    last_source = kv_get("last_promo_source") or "shopee"
+    use_shopee = (last_source == "ml")
+
+    produto = None
+
+    if use_shopee:
+        produto = get_shopee_promotion()
+        if produto:
+            kv_set("last_promo_source", "shopee")
+        else:
+            print("[CRON] Shopee sem resultado, caindo para ML")
+
+    if not produto:
+        ml_promos = get_ml_promotions()
+        produto = ml_promos[0] if ml_promos else None
+        if produto:
+            kv_set("last_promo_source", "ml")
+
+    if not produto:
+        return jsonify({"status": "erro", "motivo": "Nenhuma promoção encontrada (ML e Shopee)"}), 500
+
     asyncio.run(send_promotion_to_telegram(produto))
-    
+
     return jsonify({
-        "status": "sucesso", 
-        "produto_enviado": produto['name'],
-        "imagem": produto.get('image_url', 'sem imagem'),
-        "link_afiliado": produto['affiliate_link']
+        "status": "sucesso",
+        "fonte": produto.get("source", "ml"),
+        "produto_enviado": produto["name"],
+        "imagem": produto.get("image_url", "sem imagem"),
+        "link_afiliado": produto["affiliate_link"]
     })
 
 # Necessário para rodar localmente com `python api/index.py`
