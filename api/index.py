@@ -43,8 +43,16 @@ async def send_promotion_to_telegram(product):
     except Exception:
         pass
 
-    coupon = product.get("coupon_code", "")
-    coupon_line = f"\n\n🏷️ CUPOM: <code>{coupon}</code> (cole no carrinho!)" if coupon else ""
+    coupon = product.get("coupon") or {}
+    coupon_line = ""
+    if coupon and coupon.get("code"):
+        disc = f"{int(coupon['discount_pct'])}% OFF" if coupon.get("discount_pct") else ""
+        if not disc and coupon.get("discount_val"):
+            disc = f"R$ {coupon['discount_val']:.2f} OFF"
+        min_v = f" (mín. R$ {float(coupon['min_value']):.2f})" if coupon.get("min_value") else ""
+        platform = coupon.get("platform", "Mercado Livre")
+        disc_str = f" — {disc}" if disc else ""
+        coupon_line = f"\n\n🏷️ CUPOM{disc_str}: <code>{coupon['code']}</code>{min_v}\n📍 Usar em: {platform}"
 
     final_message = f"{deal_banner}{ad_text}{coupon_line}\n\n🛒 Compre aqui: {product['affiliate_link']}"
 

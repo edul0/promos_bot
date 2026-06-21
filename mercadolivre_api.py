@@ -274,15 +274,52 @@ def _extract_product_image(data, pid):
 
 
 def _extract_coupon(item_data):
-    """Extrai código de cupom ativo de um item do ML, se houver."""
+    """
+    Extrai cupom ativo de um item do ML.
+    Retorna dict com code, discount_pct, min_value, platform ou {} se não houver.
+    Só considera cupom "bom" se tiver >= 5% de desconto ou valor mínimo definido.
+    """
     promotions = item_data.get("promotions") or []
+    best = {}
     for promo in promotions:
-        code = promo.get("code") or promo.get("coupon_code") or promo.get("id")
+        code = promo.get("code") or promo.get("coupon_code")
         ptype = (promo.get("type") or "").upper()
-        # Filtra apenas promoções com código real (cupons), não descontos automáticos
-        if code and ptype in ("COUPON", "DEAL", "LOYALTY", "CAMPAIGN"):
-            return str(code)
-    return ""
+        if not code or ptype not in ("COUPON", "DEAL", "LOYALTY", "CAMPAIGN"):
+            continue
+
+        # Desconto percentual ou fixo
+        disc_pct  = promo.get("discount_percentage") or promo.get("rate") or 0
+        disc_val  = promo.get("discount_value") or promo.get("amount") or 0
+        min_value = promo.get("min_price") or promo.get("minimum_price") or 0
+
+        # Plataforma onde pode ser usado
+        scope = (promo.get("scope") or promo.get("channel") or "").lower()
+        if "app" in scope:
+            platform = "App do Mercado Livre"
+        elif "web" in scope:
+            platform = "Site do Mercado Livre"
+        else:
+            platform = "Mercado Livre (app ou site)"
+
+        # Só considera cupom com desconto real (>= 5%)
+        try:
+            disc_pct = float(disc_pct)
+        except Exception:
+            disc_pct = 0
+
+        if disc_pct < 5 and not disc_val:
+            continue
+
+        if not best or disc_pct > best.get("discount_pct", 0):
+            best = {
+                "code":         str(code),
+                "discount_pct": disc_pct,
+                "discount_val": disc_val,
+                "min_value":    min_value,
+                "platform":     platform,
+            }
+
+    return best
 
 
 def _fetch_product(token, pid, ptype, cat_name):
@@ -311,7 +348,7 @@ def _fetch_product(token, pid, ptype, cat_name):
                 "discount_price": f"{price:.2f}" if price else "",
                 "image_url": image,
                 "affiliate_link": link,
-                "coupon_code": coupon,
+                "coupon": coupon,
             }
         # type PRODUCT (catálogo)
         r = requests.get(f"https://api.mercadolibre.com/products/{pid}", headers=headers, timeout=10)
@@ -371,7 +408,7 @@ def _fetch_product(token, pid, ptype, cat_name):
             "discount_price": f"{price:.2f}" if price else "",
             "image_url": image,
             "affiliate_link": _best_affiliate_link(pid_url, pid_url),
-            "coupon_code": coupon,
+            "coupon": coupon,
         }
     except Exception as e:
         print(f"Erro ao buscar produto {pid}: {e}")
