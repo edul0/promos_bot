@@ -273,8 +273,20 @@ def _extract_product_image(data, pid):
     return fix_image_url(fallback) if fallback else ""
 
 
+def _extract_coupon(item_data):
+    """Extrai código de cupom ativo de um item do ML, se houver."""
+    promotions = item_data.get("promotions") or []
+    for promo in promotions:
+        code = promo.get("code") or promo.get("coupon_code") or promo.get("id")
+        ptype = (promo.get("type") or "").upper()
+        # Filtra apenas promoções com código real (cupons), não descontos automáticos
+        if code and ptype in ("COUPON", "DEAL", "LOYALTY", "CAMPAIGN"):
+            return str(code)
+    return ""
+
+
 def _fetch_product(token, pid, ptype, cat_name):
-    """Busca os detalhes reais (nome, imagem, preço, link) de 1 produto/item."""
+    """Busca os detalhes reais (nome, imagem, preço, link, cupom) de 1 produto/item."""
     headers = _ml_headers(token)
     try:
         if ptype == "ITEM":
@@ -284,15 +296,14 @@ def _fetch_product(token, pid, ptype, cat_name):
             d = r.json()
             price = d.get("price") or 0
             original = d.get("original_price") or 0
-            # Estima 15% acima para o "De: R$" se não tiver original
             if price and not original:
                 original = round(float(price) * 1.15, 2)
             pics = d.get("pictures") or []
             image = fix_image_url(pics[0]["url"]) if pics else fix_image_url(d.get("thumbnail", ""))
             permalink = d.get("permalink", "")
             real_url = permalink or f"https://www.mercadolivre.com.br/p/{pid}"
-            fallback = permalink or f"https://www.mercadolivre.com.br/p/{pid}"
-            link = _best_affiliate_link(real_url, fallback)
+            link = _best_affiliate_link(real_url, real_url)
+            coupon = _extract_coupon(d)
             return {
                 "name": d.get("title", "Produto"),
                 "category": cat_name,
@@ -300,6 +311,7 @@ def _fetch_product(token, pid, ptype, cat_name):
                 "discount_price": f"{price:.2f}" if price else "",
                 "image_url": image,
                 "affiliate_link": link,
+                "coupon_code": coupon,
             }
         # type PRODUCT (catálogo)
         r = requests.get(f"https://api.mercadolibre.com/products/{pid}", headers=headers, timeout=10)
@@ -340,8 +352,18 @@ def _fetch_product(token, pid, ptype, cat_name):
             original = round(float(price) * 1.15, 2)
         image = _extract_product_image(d, pid)
         if not image:
-            return None  # sem imagem não vale a pena (objetivo é promo COM imagem)
+            return None
         pid_url = f"https://www.mercadolivre.com.br/p/{pid}"
+        # Tenta buscar cupom do item vencedor do buy_box
+        coupon = ""
+        if bbw.get("item_id"):
+            try:
+                ir = requests.get(f"https://api.mercadolibre.com/items/{bbw['item_id']}",
+                                   headers=headers, timeout=5)
+                if ir.status_code == 200:
+                    coupon = _extract_coupon(ir.json())
+            except Exception:
+                pass
         return {
             "name": d.get("name", "Produto"),
             "category": cat_name,
@@ -349,6 +371,7 @@ def _fetch_product(token, pid, ptype, cat_name):
             "discount_price": f"{price:.2f}" if price else "",
             "image_url": image,
             "affiliate_link": _best_affiliate_link(pid_url, pid_url),
+            "coupon_code": coupon,
         }
     except Exception as e:
         print(f"Erro ao buscar produto {pid}: {e}")

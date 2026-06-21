@@ -43,7 +43,10 @@ async def send_promotion_to_telegram(product):
     except Exception:
         pass
 
-    final_message = f"{deal_banner}{ad_text}\n\n🛒 Compre aqui: {product['affiliate_link']}"
+    coupon = product.get("coupon_code", "")
+    coupon_line = f"\n\n🏷️ CUPOM: <code>{coupon}</code> (cole no carrinho!)" if coupon else ""
+
+    final_message = f"{deal_banner}{ad_text}{coupon_line}\n\n🛒 Compre aqui: {product['affiliate_link']}"
 
     # Telegram limita caption de fotos a 1024 caracteres!
     if len(final_message) > 1024:
@@ -70,7 +73,8 @@ async def send_promotion_to_telegram(product):
                 await bot.send_photo(
                     chat_id=TELEGRAM_CHAT_ID,
                     photo=photo_bytes,
-                    caption=final_message
+                    caption=final_message,
+                    parse_mode="HTML"
                 )
                 image_sent = True
                 print(f"Foto enviada OK! ({len(img_response.content)} bytes)")
@@ -81,7 +85,7 @@ async def send_promotion_to_telegram(product):
     
     if not image_sent:
         try:
-            await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=final_message)
+            await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=final_message, parse_mode="HTML")
             print("Mensagem enviada como texto (sem foto)")
         except Exception as e:
             print(f"Erro total ao enviar mensagem: {e}")
