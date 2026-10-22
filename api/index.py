@@ -23,6 +23,8 @@ from coupon_inbox import sync_coupons
 app = Flask(__name__)
 from preview_routes import preview
 app.register_blueprint(preview)
+from telegram_poll import poll_api
+app.register_blueprint(poll_api)
 
 
 def get_redirect_uri():

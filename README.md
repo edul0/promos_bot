@@ -1,5 +1,28 @@
 # Promos bot
 
+## Coleta online gratuita por intervalos
+
+`/api/telegram/poll` faz uma coleta curta dos seis canais sem manter processo
+ligado. Exige `Authorization: Bearer <TELEGRAM_POLL_SECRET>` e sessão de usuário
+em `TELEGRAM_USER_SESSION`, além de `TELEGRAM_API_ID` e `TELEGRAM_API_HASH`.
+Esses valores ficam somente nas variáveis sensíveis do backend Vercel.
+O Redis guarda o último ID processado por fonte e uma trava entre chamadas.
+A primeira execução posiciona cada fonte na mensagem mais recente, sem
+republicar o histórico. As seguintes leem até 20 novas mensagens por fonte;
+filas maiores são retomadas em chamadas posteriores. O orçamento é de 25s.
+
+Agendamento proposto: cron-job.org gratuito, a cada cinco minutos, método POST,
+URL de produção terminada em `/api/telegram/poll` e cabeçalho Authorization.
+O agendador recebe somente a chave restrita à coleta, nunca a sessão Telegram.
+O agendamento externo precisa ser criado/ativado e testado. Nenhum plano pago
+é necessário; continuam valendo as cotas do plano Vercel/Redis já existentes.
+Se excedidas, a coleta pode ser interrompida. Revogar a sessão no Telegram
+interrompe o acesso; refaça o login para substituir a sessão no backend.
+
+Esta coleta online importa avisos de cupons ML reconhecidos e os anuncia no
+grupo configurado. Não captura edições de posts já processados nem extrai
+texto de imagens. Mensagens sem código explícito não são importadas.
+
 Publicação de produtos de Mercado Livre/Shopee e leitor pessoal de ofertas/cupons.
 
 ## Publicação existente
