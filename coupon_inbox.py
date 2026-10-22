@@ -50,4 +50,6 @@ async def sync_coupons():
             command('SET', 'coupon_inbox_offset', str(update.update_id + 1))
         return {'status': 'sucesso', 'updates': len(updates), 'recebidos': accepted,
                 'anunciados': announced, 'codigos': codes, 'ativos': len(active_coupons()),
-                'avisos_nao_interpretados': unparsed[:3]}
+                'avisos_nao_interpretados': unparsed[:3],
+                'bot_username': bot.bot.username,
+                'le_todas_mensagens_grupo': bool(bot.bot.can_read_all_group_messages)}
