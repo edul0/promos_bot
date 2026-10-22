@@ -19,7 +19,7 @@ from ml_oauth import get_authorization_url, exchange_code, kv_get, kv_set
 from telegram import Bot
 
 app = Flask(__name__)
-from test_preview import preview
+from preview_routes import preview
 app.register_blueprint(preview)
 
 
@@ -356,3 +356,4 @@ def trigger_cron():
 # Necessário para rodar localmente com `python api/index.py`
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
+
