@@ -40,21 +40,12 @@ async def send_promotion_to_telegram(product):
         discount_price=product['discount_price'],
         category=product['category']
     )
-    # Banner de cupom/oferta quando há desconto real (preço atual < original)
-    deal_banner = ""
-    try:
-        op = float(product.get('original_price') or 0)
-        dp = float(product.get('discount_price') or 0)
-        if op > dp > 0:
-            pct = round((1 - dp / op) * 100)
-            if pct >= 5:
-                deal_banner = f"🎟️ OFERTA: {pct}% OFF!\n\n"
-    except Exception:
-        pass
-
     coupon = product.get("coupon") or {}
     coupon_line = '\n\n' + coupon_block(product) if coupon else ''
-    final_message = f"{deal_banner}{ad_text}{coupon_line}\n\n🛒 Compre aqui: {escape(str(product['affiliate_link']))}"
+    store = "Shopee" if product.get('source') == 'shopee' else "Mercado Livre"
+    final_message = (f"{ad_text}{coupon_line}\n\n"
+                     f"🛒 <b>Ver oferta na {store}</b>\n{escape(str(product['affiliate_link']))}"
+                     "\n\n<i>Preço e estoque podem mudar. Confira o frete.</i>")
 
     # Telegram limita caption de fotos a 1024 caracteres!
     # Se exceder a legenda, usa texto para preservar cupom e link completos.

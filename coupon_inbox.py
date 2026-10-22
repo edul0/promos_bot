@@ -14,10 +14,10 @@ async def publish_coupon(bot, coupon):
     key = 'coupon_notice_' + signature
     if command('GET', key):
         return False
-    notice = ('🎟️ <b>Cupom Mercado Livre recebido</b>\n\n'
+    notice = ('🟡 <b>VISTALL PROMOS · MERCADO LIVRE</b>\n\n'
               + coupon_block({'coupon': coupon})
-              + '\n\nCondições do aviso:\n' + escape(coupon['conditions'])
-              + '\n\nCódigo recebido pelo bot; validade e aplicação não verificadas no checkout.')
+              + '\n\n<b>Regras do aviso</b>\n<blockquote>' + escape(coupon['conditions']) + '</blockquote>'
+              + '\n\n<i>Cupom identificado em aviso; disponibilidade não confirmada no checkout.</i>')
     await bot.send_message(TELEGRAM_CHAT_ID, notice, parse_mode='HTML')
     command('SET', key, '1', 'EX', 7 * 86400)
     return True
