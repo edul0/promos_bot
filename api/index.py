@@ -9,13 +9,22 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-from ai_generator import generate_ad_text
+from offer_message import generate_ad_text
+from offer_history import record_sent
+from offer_storage import serialized_cron
+from html import escape
 from mercadolivre_api import get_ml_promotions
 from shopee_api import get_shopee_promotion
 from ml_oauth import get_authorization_url, exchange_code, kv_get, kv_set
 from telegram import Bot
+from coupons import attach_coupon, coupon_block
+from coupon_inbox import sync_coupons
 
 app = Flask(__name__)
+from preview_routes import preview
+app.register_blueprint(preview)
+from telegram_poll import poll_api
+app.register_blueprint(poll_api)
 
 
 def get_redirect_uri():
@@ -39,30 +48,20 @@ async def send_promotion_to_telegram(product):
         if op > dp > 0:
             pct = round((1 - dp / op) * 100)
             if pct >= 5:
-                deal_banner = f"🎟️ CUPOM / OFERTA: {pct}% OFF!\n\n"
+                deal_banner = f"🎟️ OFERTA: {pct}% OFF!\n\n"
     except Exception:
         pass
 
     coupon = product.get("coupon") or {}
-    coupon_line = ""
-    if coupon and coupon.get("code"):
-        disc = f"{int(coupon['discount_pct'])}% OFF" if coupon.get("discount_pct") else ""
-        if not disc and coupon.get("discount_val"):
-            disc = f"R$ {coupon['discount_val']:.2f} OFF"
-        min_v = f" (mín. R$ {float(coupon['min_value']):.2f})" if coupon.get("min_value") else ""
-        platform = coupon.get("platform", "Mercado Livre")
-        disc_str = f" — {disc}" if disc else ""
-        coupon_line = f"\n\n🏷️ CUPOM{disc_str}: <code>{coupon['code']}</code>{min_v}\n📍 Usar em: {platform}"
-
-    final_message = f"{deal_banner}{ad_text}{coupon_line}\n\n🛒 Compre aqui: {product['affiliate_link']}"
+    coupon_line = '\n\n' + coupon_block(product) if coupon else ''
+    final_message = f"{deal_banner}{ad_text}{coupon_line}\n\n🛒 Compre aqui: {escape(str(product['affiliate_link']))}"
 
     # Telegram limita caption de fotos a 1024 caracteres!
-    if len(final_message) > 1024:
-        final_message = final_message[:1020] + "..."
+    # Se exceder a legenda, usa texto para preservar cupom e link completos.
     
     image_sent = False
     
-    if product.get('image_url'):
+    if product.get('image_url') and len(final_message) <= 1024:
         try:
             # Baixa a imagem na Vercel com headers completos
             img_response = requests.get(
@@ -303,6 +302,7 @@ def ml_callback():
     return jsonify(resultado)
 
 @app.route('/api/cron')
+@serialized_cron
 def trigger_cron():
     """
     Endpoint chamado pela Vercel Cron ou manualmente para disparar promoção.
@@ -310,6 +310,12 @@ def trigger_cron():
     """
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return jsonify({"error": "Chaves do Telegram não configuradas no ambiente."}), 500
+
+    # Importa avisos encaminhados antes de escolher os produtos do disparo.
+    try:
+        asyncio.run(sync_coupons())
+    except Exception as exc:
+        print(f'[CUPONS] Sincronização indisponível: {type(exc).__name__}')
 
     # Alterna entre fontes: ML → Shopee → ML → Shopee...
     last_source = kv_get("last_promo_source") or "shopee"
@@ -319,21 +325,26 @@ def trigger_cron():
 
     if use_shopee:
         produto = get_shopee_promotion()
-        if produto:
-            kv_set("last_promo_source", "shopee")
-        else:
+        if not produto:
             print("[CRON] Shopee sem resultado, caindo para ML")
 
     if not produto:
         ml_promos = get_ml_promotions()
         produto = ml_promos[0] if ml_promos else None
-        if produto:
-            kv_set("last_promo_source", "ml")
 
     if not produto:
         return jsonify({"status": "erro", "motivo": "Nenhuma promoção encontrada (ML e Shopee)"}), 500
 
-    asyncio.run(send_promotion_to_telegram(produto))
+    produto = attach_coupon(produto)
+    if not asyncio.run(send_promotion_to_telegram(produto)):
+        return jsonify({"status": "erro", "motivo": "Telegram não confirmou o envio"}), 502
+    if not record_sent(produto):
+        return jsonify({"status": "erro", "motivo": "Oferta enviada; falha ao salvar histórico"}), 503
+    kv_set("last_promo_source", produto.get("source", "ml"))
+    if produto.get("source") == "shopee":
+        kv_set("shopee_last_category", produto["category"])
+    elif produto.get("_ml_cat"):
+        kv_set("ml_last_cat", produto["_ml_cat"])
 
     return jsonify({
         "status": "sucesso",
@@ -343,6 +354,18 @@ def trigger_cron():
         "link_afiliado": produto["affiliate_link"]
     })
 
+
+@app.route('/api/coupons/sync', methods=['GET', 'POST'])
+@serialized_cron
+def sync_coupon_inbox():
+    try:
+        result = asyncio.run(sync_coupons())
+        return jsonify(result), 200 if result['status'] == 'sucesso' else 409
+    except Exception as exc:
+        print(f'[CUPONS] Falha: {type(exc).__name__}')
+        return jsonify(status='erro', motivo='Não foi possível importar os avisos do Telegram'), 503
+
 # Necessário para rodar localmente com `python api/index.py`
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
+

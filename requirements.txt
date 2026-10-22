@@ -4,3 +4,5 @@ python-dotenv
 schedule
 requests
 Flask
+tzdata
+Telethon>=1.45,<2
