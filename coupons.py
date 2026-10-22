@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from offer_history import normalize
 from offer_storage import command
+from offer_message import money
 
 ZONE = ZoneInfo('America/Sao_Paulo')
 
@@ -144,20 +145,20 @@ def coupon_block(product):
     coupon = product.get('coupon') or {}
     if not coupon.get('code'):
         return ''
-    lines = [f'🏷️ Cupom: <code>{escape(str(coupon["code"]))}</code>']
+    lines = [f'🎟 <b>CUPOM</b>  <code>{escape(str(coupon["code"]))}</code>']
     if coupon.get('discount_pct'):
-        lines.append(f'{float(coupon["discount_pct"]):g}% OFF')
+        lines.append(f'<b>{float(coupon["discount_pct"]):g}% OFF</b>')
     elif coupon.get('discount_val'):
-        lines.append(f'R$ {float(coupon["discount_val"]):.2f} OFF')
+        lines.append(f'<b>R$ {money(coupon["discount_val"])} OFF</b>')
     if coupon.get('min_value') is not None:
-        lines.append(f'Compra mínima: R$ {float(coupon["min_value"]):.2f}')
+        lines.append(f'• Compra mínima: R$ {money(coupon["min_value"])}')
     if coupon.get('max_discount') is not None:
-        lines.append(f'Desconto limitado a R$ {float(coupon["max_discount"]):.2f}')
+        lines.append(f'• Desconto limitado a R$ {money(coupon["max_discount"])}')
     if coupon.get('expires_at') and coupon.get('expiry_explicit'):
-        lines.append('Validade anunciada até ' + datetime.fromtimestamp(coupon['expires_at'] - 1, ZONE).strftime('%d/%m %H:%M'))
-    lines.append('Onde usar: ' + escape(str(coupon.get('platform', 'Mercado Livre'))))
+        lines.append('⏳ Validade anunciada: ' + datetime.fromtimestamp(coupon['expires_at'] - 1, ZONE).strftime('%d/%m às %H:%M'))
+    lines.append('📍 ' + escape(str(coupon.get('platform', 'Mercado Livre'))))
     if product.get('coupon_savings'):
         price = float(product['discount_price']) - product['coupon_savings']
-        lines.append(f'Com cupom, se elegível: R$ {price:.2f} (estimativa, sem frete).')
-    lines.append('Confirme aplicação e regras no carrinho; não cumulativo.')
+        lines.append(f'\n💚 <b>Com cupom, se elegível: R$ {money(price)}</b>\n<i>Estimativa sem frete.</i>')
+    lines.append('<i>Confira regras e aplicação no carrinho.</i>')
     return '\n'.join(lines)

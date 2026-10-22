@@ -42,7 +42,7 @@ class CouponTests(unittest.TestCase):
         result = coupon_block({**self.product, 'coupon': self.coupon, 'coupon_savings': 200})
         self.assertIn('MELITESTE', result)
         self.assertIn('limitado a R$ 200', result)
-        self.assertIn('se elegível: R$ 3300', result)
+        self.assertIn('se elegível: R$ 3.300,00', result)
 
     def test_no_percent_without_cap(self):
         self.assertFalse(compatible(self.product, {**self.coupon, 'max_discount': None}))
