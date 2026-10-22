@@ -28,6 +28,7 @@ class DeliveryTests(unittest.TestCase):
                 patch.object(index, 'kv_get', return_value='shopee'), \
                 patch.object(index, 'get_ml_promotions', return_value=[{'name': 'test'}]), \
                 patch.object(index, 'send_promotion_to_telegram', new_callable=AsyncMock, return_value=False), \
+                patch.object(index, 'attach_coupon', side_effect=lambda p: p), \
                 patch.object(index, 'record_sent') as record:
             response = index.app.test_client().get('/api/cron')
             self.assertEqual(response.status_code, 502)
@@ -42,6 +43,7 @@ class DeliveryTests(unittest.TestCase):
                 patch.object(index, 'kv_set', return_value=True), \
                 patch.object(index, 'get_ml_promotions', return_value=[product]), \
                 patch.object(index, 'send_promotion_to_telegram', new_callable=AsyncMock, return_value=True), \
+                patch.object(index, 'attach_coupon', side_effect=lambda p: p), \
                 patch.object(index, 'record_sent', return_value=True) as record:
             response = index.app.test_client().get('/api/cron')
             self.assertEqual(response.status_code, 200)

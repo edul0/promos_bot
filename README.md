@@ -76,7 +76,28 @@ perdidas durante uma parada. Falhas no envio são registradas no log. Redis e
 Telegram não formam uma transação: queda após enviar e antes de salvar pode
 causar repetição. Execute apenas uma instância do leitor por sessão.
 
-## Verificação local
+## Entrada de cupons pelo bot existente
+
+Encaminhe um aviso de cupom ML ao grupo configurado ou ao privado do bot
+(neste caso, o remetente deve ser administrador do grupo configurado).
+`/api/coupons/sync` importa os avisos e publica os novos cupons no grupo.
+O `/api/cron` também executa essa importação antes de selecionar uma oferta.
+Este fluxo usa getUpdates e não remove webhooks existentes; se houver webhook,
+a integração precisa ser feita nele. Depende de o bot receber a mensagem
+(mensagens comuns do grupo podem estar limitadas pelo privacy mode).
+
+O aviso deve conter Mercado Livre, código explícito (ex.: `Cupom: CODIGO10`),
+desconto e condições. Para anexar a produtos automaticamente exige validade
+informada, mínimo de compra e escopo identificável; percentuais exigem teto.
+Restrições de conta, pagamento, Full e produtos selecionados ficam como avisos,
+sem anexação automática. A estimativa anexada sempre depende da elegibilidade
+no carrinho. Não há descoberta automática no site oficial nem leitor de grupos
+ativo até a configuração separada do processo contínuo.
+
+Cupons sem validade explícita ficam como aviso durante 24h. Não é confirmação
+de vigência. Avisos incompatíveis são contados no diagnóstico, sem expor o texto recebido. Não use o endpoint como API pública de divulgação.
+
+## Testes
 
 `python -m unittest discover -s tests -v`
 

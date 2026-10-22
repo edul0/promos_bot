@@ -17,6 +17,8 @@ from mercadolivre_api import get_ml_promotions
 from shopee_api import get_shopee_promotion
 from ml_oauth import get_authorization_url, exchange_code, kv_get, kv_set
 from telegram import Bot
+from coupons import attach_coupon, coupon_block
+from coupon_inbox import sync_coupons
 
 app = Flask(__name__)
 from preview_routes import preview
@@ -49,25 +51,15 @@ async def send_promotion_to_telegram(product):
         pass
 
     coupon = product.get("coupon") or {}
-    coupon_line = ""
-    if coupon and coupon.get("code"):
-        disc = f"{int(coupon['discount_pct'])}% OFF" if coupon.get("discount_pct") else ""
-        if not disc and coupon.get("discount_val"):
-            disc = f"R$ {coupon['discount_val']:.2f} OFF"
-        min_v = f" (mín. R$ {float(coupon['min_value']):.2f})" if coupon.get("min_value") else ""
-        platform = coupon.get("platform", "Mercado Livre")
-        disc_str = f" — {disc}" if disc else ""
-        coupon_line = f"\n\n🏷️ CUPOM{disc_str}: <code>{escape(str(coupon['code']))}</code>{min_v}\n📍 Usar em: {escape(str(platform))}"
-
+    coupon_line = '\n\n' + coupon_block(product) if coupon else ''
     final_message = f"{deal_banner}{ad_text}{coupon_line}\n\n🛒 Compre aqui: {escape(str(product['affiliate_link']))}"
 
     # Telegram limita caption de fotos a 1024 caracteres!
-    if len(final_message) > 1024:
-        final_message = final_message[:1020] + "..."
+    # Se exceder a legenda, usa texto para preservar cupom e link completos.
     
     image_sent = False
     
-    if product.get('image_url'):
+    if product.get('image_url') and len(final_message) <= 1024:
         try:
             # Baixa a imagem na Vercel com headers completos
             img_response = requests.get(
@@ -317,6 +309,12 @@ def trigger_cron():
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return jsonify({"error": "Chaves do Telegram não configuradas no ambiente."}), 500
 
+    # Importa avisos encaminhados antes de escolher os produtos do disparo.
+    try:
+        asyncio.run(sync_coupons())
+    except Exception as exc:
+        print(f'[CUPONS] Sincronização indisponível: {type(exc).__name__}')
+
     # Alterna entre fontes: ML → Shopee → ML → Shopee...
     last_source = kv_get("last_promo_source") or "shopee"
     use_shopee = (last_source == "ml")
@@ -335,6 +333,7 @@ def trigger_cron():
     if not produto:
         return jsonify({"status": "erro", "motivo": "Nenhuma promoção encontrada (ML e Shopee)"}), 500
 
+    produto = attach_coupon(produto)
     if not asyncio.run(send_promotion_to_telegram(produto)):
         return jsonify({"status": "erro", "motivo": "Telegram não confirmou o envio"}), 502
     if not record_sent(produto):
@@ -352,6 +351,17 @@ def trigger_cron():
         "imagem": produto.get("image_url", "sem imagem"),
         "link_afiliado": produto["affiliate_link"]
     })
+
+
+@app.route('/api/coupons/sync', methods=['GET', 'POST'])
+@serialized_cron
+def sync_coupon_inbox():
+    try:
+        result = asyncio.run(sync_coupons())
+        return jsonify(result), 200 if result['status'] == 'sucesso' else 409
+    except Exception as exc:
+        print(f'[CUPONS] Falha: {type(exc).__name__}')
+        return jsonify(status='erro', motivo='Não foi possível importar os avisos do Telegram'), 503
 
 # Necessário para rodar localmente com `python api/index.py`
 if __name__ == '__main__':
