@@ -6,6 +6,7 @@ from urllib.parse import urlencode, quote
 
 from ml_oauth import get_valid_access_token, kv_get, kv_set
 from ml_affiliate import generate_official_affiliate_link
+from offer_history import eligible
 
 ML_MATT_TOOL = os.getenv("ML_MATT_TOOL", "")
 ML_MATT_WORD = os.getenv("ML_MATT_WORD", "")
@@ -43,159 +44,15 @@ def fix_image_url(thumbnail):
         image = image.replace("http://", "https://")
     return image
 
-# Catálogo de ofertas reais - com links de BUSCA (nunca quebram!)
-CATALOGO_PRODUTOS = [
-    {
-        "name": "Smart TV Samsung 55\" Crystal UHD 4K",
-        "category": "TVs",
-        "original_price": "3499.00",
-        "discount_price": "2499.00",
-        "search_term": "Smart TV Samsung 55 Crystal UHD 4K"
-    },
-    {
-        "name": "iPhone 15 128GB",
-        "category": "Celulares",
-        "original_price": "5999.00",
-        "discount_price": "4699.00",
-        "search_term": "iPhone 15 128GB"
-    },
-    {
-        "name": "PlayStation 5 Slim 1TB",
-        "category": "Videogames",
-        "original_price": "4499.00",
-        "discount_price": "3799.00",
-        "search_term": "PlayStation 5 Slim 1TB"
-    },
-    {
-        "name": "Notebook Lenovo IdeaPad 3i Core i5 8GB 256GB SSD",
-        "category": "Notebooks",
-        "original_price": "3799.00",
-        "discount_price": "2899.00",
-        "search_term": "Notebook Lenovo IdeaPad 3i Core i5"
-    },
-    {
-        "name": "Fone de Ouvido JBL Tune 520BT Bluetooth",
-        "category": "Fones de Ouvido",
-        "original_price": "349.00",
-        "discount_price": "219.00",
-        "search_term": "JBL Tune 520BT Bluetooth"
-    },
-    {
-        "name": "Echo Dot 5ª Geração Amazon com Alexa",
-        "category": "Smart Home",
-        "original_price": "449.00",
-        "discount_price": "299.00",
-        "search_term": "Echo Dot 5 geração Alexa"
-    },
-    {
-        "name": "Airfryer Philips Walita 4.1L",
-        "category": "Eletrodomésticos",
-        "original_price": "599.00",
-        "discount_price": "379.00",
-        "search_term": "Airfryer Philips Walita"
-    },
-    {
-        "name": "Samsung Galaxy S24 Ultra 256GB",
-        "category": "Celulares",
-        "original_price": "8999.00",
-        "discount_price": "6499.00",
-        "search_term": "Samsung Galaxy S24 Ultra 256GB"
-    },
-    {
-        "name": "Monitor Gamer LG UltraGear 27\" 144Hz IPS",
-        "category": "Monitores",
-        "original_price": "1999.00",
-        "discount_price": "1399.00",
-        "search_term": "Monitor LG UltraGear 27 144Hz"
-    },
-    {
-        "name": "Kindle 11ª Geração 16GB",
-        "category": "Leitores Digitais",
-        "original_price": "549.00",
-        "discount_price": "399.00",
-        "search_term": "Kindle 11 geração 16GB"
-    },
-    {
-        "name": "Xbox Series S 512GB",
-        "category": "Videogames",
-        "original_price": "2699.00",
-        "discount_price": "1999.00",
-        "search_term": "Xbox Series S 512GB"
-    },
-    {
-        "name": "Teclado Mecânico Redragon Kumara RGB",
-        "category": "Periféricos Gamer",
-        "original_price": "299.00",
-        "discount_price": "189.00",
-        "search_term": "Teclado Mecânico Redragon Kumara RGB"
-    },
-    {
-        "name": "Mouse Gamer Logitech G502 HERO",
-        "category": "Periféricos Gamer",
-        "original_price": "399.00",
-        "discount_price": "249.00",
-        "search_term": "Mouse Logitech G502 HERO"
-    },
-    {
-        "name": "SSD Kingston NV2 1TB NVMe M.2",
-        "category": "Armazenamento",
-        "original_price": "499.00",
-        "discount_price": "339.00",
-        "search_term": "SSD Kingston NV2 1TB NVMe"
-    },
-    {
-        "name": "Aspirador Robô Xiaomi S10+",
-        "category": "Smart Home",
-        "original_price": "2999.00",
-        "discount_price": "2199.00",
-        "search_term": "Aspirador Robô Xiaomi S10"
-    },
-    {
-        "name": "Smartwatch Samsung Galaxy Watch 6 40mm",
-        "category": "Relógios Inteligentes",
-        "original_price": "1999.00",
-        "discount_price": "1499.00",
-        "search_term": "Samsung Galaxy Watch 6 40mm"
-    },
-    {
-        "name": "Cadeira Gamer ThunderX3 EC3",
-        "category": "Cadeiras Gamer",
-        "original_price": "1299.00",
-        "discount_price": "899.00",
-        "search_term": "Cadeira Gamer ThunderX3 EC3"
-    },
-    {
-        "name": "Tablet Samsung Galaxy Tab A9 64GB",
-        "category": "Tablets",
-        "original_price": "1499.00",
-        "discount_price": "1099.00",
-        "search_term": "Tablet Samsung Galaxy Tab A9 64GB"
-    },
-    {
-        "name": "Webcam Logitech C920s Full HD 1080p",
-        "category": "Acessórios PC",
-        "original_price": "549.00",
-        "discount_price": "379.00",
-        "search_term": "Webcam Logitech C920s Full HD"
-    },
-    {
-        "name": "Caixa de Som JBL Flip 6 Bluetooth",
-        "category": "Caixas de Som",
-        "original_price": "899.00",
-        "discount_price": "649.00",
-        "search_term": "JBL Flip 6 Bluetooth"
-    },
-]
-
 # Categorias do ML (Brasil) p/ os MAIS VENDIDOS via /highlights.
 # Formato: id -> (nome, peso, filtro_nome_obrigatorio).
 # filtro_nome_obrigatorio: tuple de strings que DEVEM estar no nome do produto (case-insensitive).
 # None = sem filtro.
 ML_HIGHLIGHT_CATEGORIES = {
     # === DESTAQUE (peso alto) ===
-    "MLB3697": ("Fones de Ouvido", 4, None),
-    "MLB1132": ("Cartas Colecionáveis / Pokémon", 4, ("pokemon", "pokémon", "tcg")),  # MLB1132 é muito amplo; filtra por nome
-    "MLB1648": ("Informática e Peças de PC", 4, None),
+    "MLB3697": ("Fones de Ouvido", 1, None),
+    "MLB1132": ("Cartas Colecionáveis / Pokémon", 1, ("pokemon", "pokémon", "tcg")),  # MLB1132 é muito amplo; filtra por nome
+    "MLB1648": ("Informática e Peças de PC", 1, None),
     # === GERAIS (peso 1) ===
     "MLB1000": ("Eletrônicos, Áudio e Vídeo", 1, None),
     "MLB1144": ("Games", 1, None),
@@ -244,13 +101,14 @@ def _build_product_link(product_id):
 def _best_affiliate_link(product_url, fallback_url):
     """
     Tenta o link OFICIAL (meli.la) via gerador; se falhar (sessão expirada etc.),
-    usa o fallback /p/...matt_tool (que ainda carrega a etiqueta de afiliado).
+    retém o produto quando a sessão não gera um link oficial.
     """
     official = generate_official_affiliate_link(product_url)
     if official:
         print(f"[AFILIADO] meli.la oficial: {official}")
         return official
-    return generate_ml_affiliate_link(fallback_url)
+    # Sem confirmação do gerador da conta, não publica o produto.
+    return None
 
 
 def _extract_product_image(data, pid):
@@ -333,8 +191,6 @@ def _fetch_product(token, pid, ptype, cat_name):
             d = r.json()
             price = d.get("price") or 0
             original = d.get("original_price") or 0
-            if price and not original:
-                original = round(float(price) * 1.15, 2)
             pics = d.get("pictures") or []
             image = fix_image_url(pics[0]["url"]) if pics else fix_image_url(d.get("thumbnail", ""))
             permalink = d.get("permalink", "")
@@ -384,9 +240,6 @@ def _fetch_product(token, pid, ptype, cat_name):
             except Exception:
                 pass
                 
-        # Se achou preço mas não tem original, gera um original estimado (15% a mais) para o visual de desconto
-        if price and not original:
-            original = round(float(price) * 1.15, 2)
         image = _extract_product_image(d, pid)
         if not image:
             return None
@@ -467,7 +320,7 @@ def _get_from_highlights(token, sent_ids):
                 print(f"highlights {cat_id}: status {hr.status_code}")
                 continue
             content = hr.json().get("content", [])
-            candidates = [c for c in content if c.get("id") not in sent_ids]
+            candidates = [c for c in content if c.get("id")]
             if not candidates:
                 print(f"[SKIP] {cat_name}: todos os {len(content)} itens já enviados")
                 continue  # pula categoria esgotada, NÃO repete
@@ -479,30 +332,25 @@ def _get_from_highlights(token, sent_ids):
                 promo = _fetch_product(token, pid, ptype, cat_name)
                 if not promo:
                     continue
-                if not _passes_name_filter(promo["name"], name_filter):
+                if not eligible(promo) or not _passes_name_filter(promo["name"], name_filter):
                     print(f"[FILTRO] Ignorado ({cat_name}): {promo['name']}")
                     continue
-                _save_history(sent_ids, pid, cat_id)
+                promo["_ml_pid"] = pid
+                promo["_ml_cat"] = cat_id
+                promo["source"] = "ml"
                 print(f"[HIGHLIGHTS] {cat_name}: {promo['name']}")
                 return promo
         except Exception as e:
             print(f"Erro highlights {cat_id}: {e}")
             continue
 
-    # Todas as categorias esgotadas — reseta histórico e tenta de novo
-    print("[RESET] Todas as categorias esgotadas, limpando histórico")
-    try:
-        kv_set(HISTORY_KEY, json.dumps([]))
-        kv_set(LAST_CAT_KEY, "")
-    except Exception:
-        pass
     return None
 
 
 def get_ml_promotions():
     """
     Busca os MAIS VENDIDOS do ML (API autenticada /highlights + /products).
-    Se não houver token ou a API falhar, cai no catálogo curado.
+    Sem token ou oferta atual, não publica preços estáticos.
     """
     access_token = get_valid_access_token()
 
@@ -514,32 +362,9 @@ def get_ml_promotions():
         promo = _get_from_highlights(access_token, sent_ids)
         if promo:
             return [promo]
-        print("Highlights não retornou produto; usando catálogo")
+        print("Highlights não retornou produto; sem oferta atual")
     else:
-        print("Sem token do ML (autorize em /api/ml_auth); usando catálogo")
+        print("Sem token do ML (autorize em /api/ml_auth); sem oferta atual")
 
-    # === FALLBACK: CATÁLOGO COM LINKS DE BUSCA ===
-    print("Usando catálogo curado com links de busca")
-
-    unused = [p for p in CATALOGO_PRODUTOS if p["name"] not in sent_ids]
-    if not unused:
-        unused = CATALOGO_PRODUTOS
-
-    chosen = random.choice(unused)
-    _save_history(sent_ids, chosen["name"], "catalogo")
-
-    # Gera link de BUSCA com afiliado (nunca quebra!)
-    search_url = make_search_url(chosen["search_term"])
-    affiliate_link = generate_ml_affiliate_link(search_url)
-
-    print(f"[CATALOGO] Produto: {chosen['name']}")
-    print(f"[CATALOGO] Link: {affiliate_link}")
-
-    return [{
-        "name": chosen["name"],
-        "category": chosen["category"],
-        "original_price": chosen["original_price"],
-        "discount_price": chosen["discount_price"],
-        "image_url": "",  # catálogo é texto; a busca de imagem foi bloqueada pelo ML
-        "affiliate_link": affiliate_link
-    }]
+    # Catálogo fixo desativado: não há preço atual nem anúncio específico.
+    return []

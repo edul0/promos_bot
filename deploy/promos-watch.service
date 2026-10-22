@@ -1,0 +1,22 @@
+[Unit]
+Description=Alertas pessoais de ofertas e cupons do Telegram
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=promos
+WorkingDirectory=/opt/promos_bot
+EnvironmentFile=/opt/promos_bot/.env
+Environment=WATCH_DATA_DIR=/var/lib/promos-watch
+StateDirectory=promos-watch
+UMask=0077
+ExecStart=/opt/promos_bot/.venv/bin/python telegram_watch.py
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/promos-watch
+
+[Install]
+WantedBy=multi-user.target

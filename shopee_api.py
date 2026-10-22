@@ -11,6 +11,8 @@ import csv
 import io
 import random
 import requests
+from offer_history import eligible
+from ml_oauth import kv_get
 
 SHOPEE_FEED_URLS = [
     u for u in [
@@ -55,24 +57,22 @@ def _detect_columns(header_row):
                     return i
         return None
 
+    def first(*values):
+        return next((v for v in values if v is not None), None)
+
     return {
-        "name":     exact("title") or exact("item_name") or exact("product_name") or
-                    find("title", "item_name", "product_name", "produto") or
-                    find("name", exclude=("model", "shop", "file")),
-        # sale_price = preço com desconto (atual); price = preço cheio (original)
-        "price":    find("sale_price", "item_price", "preco", "preço") or exact("price"),
-        "original": find("original_price", "market_price", "list_price", "preco_original") or exact("price"),
-        # prefere o image_link principal, senão qualquer imagem
-        "image":    exact("image_link") or find("image", "imagem", "img"),
-        # Link de AFILIADO = o "short link" (shope.ee). Nunca o product_link cru nem imagem.
-        "url":      find("short link", "short_link", "offer_link", "affiliate", "shope.ee",
-                         exclude=("image", "img")) or
-                    find("product_link", "item_url", "product_url",
-                         exclude=("image", "img", "short")),
+        "name": first(exact("title"), exact("item_name"), exact("product_name"),
+                      find("title", "item_name", "product_name", "produto"),
+                      find("name", exclude=("model", "shop", "file"))),
+        "price": first(find("sale_price", "item_price", "preco", "preço"), exact("price")),
+        "original": first(find("original_price", "market_price", "list_price", "preco_original"), exact("price")),
+        "image": first(exact("image_link"), find("image", "imagem", "img")),
+        "url": find("short link", "short_link", "offer_link", "affiliate", "shope.ee", exclude=("image", "img")),
         "category": find("global_category3", "global_category", "category", "categoria"),
         "discount": find("discount", "desconto"),
-        "sales":    find("item_sales", "historical_sold", "sold", "sales", "vendas"),
+        "sales": find("item_sales", "historical_sold", "sold", "sales", "vendas"),
     }
+
 
 
 MAX_FEED_BYTES = 4 * 1024 * 1024  # lê no máx ~4MB do feed (evita timeout/memória na Vercel)
@@ -177,7 +177,7 @@ def _match_category(product):
     for cat_name, keywords in CATEGORY_FILTERS.items():
         if any(kw in text for kw in keywords):
             return cat_name
-    return None
+    return product.get("category_raw") or "Variedades"
 
 
 def get_shopee_promotion(sent_ids=None):
@@ -213,6 +213,8 @@ def get_shopee_promotion(sent_ids=None):
         if p["affiliate_link"] in sent_ids:
             continue
         p["category"] = cat
+        if p["price"] <= 0 or not eligible({**p, "source": "shopee", "discount_price": p["price"]}):
+            continue
         filtered.append(p)
 
     print(f"[SHOPEE] {len(filtered)} elegíveis (Pokémon TCG + PC)")
@@ -221,7 +223,11 @@ def get_shopee_promotion(sent_ids=None):
 
     # Ordena por desconto * popularidade, escolhe aleatório entre top 10
     filtered.sort(key=lambda x: x["discount_pct"] * (1 + x["sales"] / 1000), reverse=True)
-    chosen = random.choice(filtered[:10])
+    last_category = kv_get("shopee_last_category")
+    varied = [p for p in filtered if p["category"] != last_category]
+    categories = list({p["category"] for p in (varied or filtered)})
+    selected_category = random.choice(categories)
+    chosen = random.choice([p for p in (varied or filtered) if p["category"] == selected_category][:20])
 
     op = f"{chosen['original_price']:.2f}" if chosen["original_price"] else ""
     dp = f"{chosen['price']:.2f}" if chosen["price"] else ""

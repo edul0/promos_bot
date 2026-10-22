@@ -9,7 +9,10 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-from ai_generator import generate_ad_text
+from offer_message import generate_ad_text
+from offer_history import record_sent
+from offer_storage import serialized_cron
+from html import escape
 from mercadolivre_api import get_ml_promotions
 from shopee_api import get_shopee_promotion
 from ml_oauth import get_authorization_url, exchange_code, kv_get, kv_set
@@ -39,7 +42,7 @@ async def send_promotion_to_telegram(product):
         if op > dp > 0:
             pct = round((1 - dp / op) * 100)
             if pct >= 5:
-                deal_banner = f"🎟️ CUPOM / OFERTA: {pct}% OFF!\n\n"
+                deal_banner = f"🎟️ OFERTA: {pct}% OFF!\n\n"
     except Exception:
         pass
 
@@ -52,9 +55,9 @@ async def send_promotion_to_telegram(product):
         min_v = f" (mín. R$ {float(coupon['min_value']):.2f})" if coupon.get("min_value") else ""
         platform = coupon.get("platform", "Mercado Livre")
         disc_str = f" — {disc}" if disc else ""
-        coupon_line = f"\n\n🏷️ CUPOM{disc_str}: <code>{coupon['code']}</code>{min_v}\n📍 Usar em: {platform}"
+        coupon_line = f"\n\n🏷️ CUPOM{disc_str}: <code>{escape(str(coupon['code']))}</code>{min_v}\n📍 Usar em: {escape(str(platform))}"
 
-    final_message = f"{deal_banner}{ad_text}{coupon_line}\n\n🛒 Compre aqui: {product['affiliate_link']}"
+    final_message = f"{deal_banner}{ad_text}{coupon_line}\n\n🛒 Compre aqui: {escape(str(product['affiliate_link']))}"
 
     # Telegram limita caption de fotos a 1024 caracteres!
     if len(final_message) > 1024:
@@ -303,6 +306,7 @@ def ml_callback():
     return jsonify(resultado)
 
 @app.route('/api/cron')
+@serialized_cron
 def trigger_cron():
     """
     Endpoint chamado pela Vercel Cron ou manualmente para disparar promoção.
@@ -319,21 +323,25 @@ def trigger_cron():
 
     if use_shopee:
         produto = get_shopee_promotion()
-        if produto:
-            kv_set("last_promo_source", "shopee")
-        else:
+        if not produto:
             print("[CRON] Shopee sem resultado, caindo para ML")
 
     if not produto:
         ml_promos = get_ml_promotions()
         produto = ml_promos[0] if ml_promos else None
-        if produto:
-            kv_set("last_promo_source", "ml")
 
     if not produto:
         return jsonify({"status": "erro", "motivo": "Nenhuma promoção encontrada (ML e Shopee)"}), 500
 
-    asyncio.run(send_promotion_to_telegram(produto))
+    if not asyncio.run(send_promotion_to_telegram(produto)):
+        return jsonify({"status": "erro", "motivo": "Telegram não confirmou o envio"}), 502
+    if not record_sent(produto):
+        return jsonify({"status": "erro", "motivo": "Oferta enviada; falha ao salvar histórico"}), 503
+    kv_set("last_promo_source", produto.get("source", "ml"))
+    if produto.get("source") == "shopee":
+        kv_set("shopee_last_category", produto["category"])
+    elif produto.get("_ml_cat"):
+        kv_set("ml_last_cat", produto["_ml_cat"])
 
     return jsonify({
         "status": "sucesso",
