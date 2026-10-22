@@ -7,6 +7,22 @@ from offer_storage import command
 from coupons import parse_coupon, save_coupon, active_coupons, coupon_block
 
 
+async def publish_coupon(bot, coupon):
+    """Mesmo registro e antirrepetição para encaminhamentos e leitor automático."""
+    save_coupon(coupon)
+    signature = hashlib.sha256((coupon['code'] + coupon['conditions']).encode()).hexdigest()
+    key = 'coupon_notice_' + signature
+    if command('GET', key):
+        return False
+    notice = ('🎟️ <b>Cupom Mercado Livre recebido</b>\n\n'
+              + coupon_block({'coupon': coupon})
+              + '\n\nCondições do aviso:\n' + escape(coupon['conditions'])
+              + '\n\nCódigo recebido pelo bot; validade e aplicação não verificadas no checkout.')
+    await bot.send_message(TELEGRAM_CHAT_ID, notice, parse_mode='HTML')
+    command('SET', key, '1', 'EX', 7 * 86400)
+    return True
+
+
 async def sync_coupons():
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return {'status': 'erro', 'motivo': 'Telegram não configurado'}
@@ -33,19 +49,9 @@ async def sync_coupons():
                 if allowed and not coupon and 'cup' in text.lower():
                     unparsed.append({"motivo": "Código, loja ou validade não reconhecidos", "tem_legenda": bool(message.caption)})
                 if coupon:
-                    save_coupon(coupon)
                     accepted += 1
                     codes.append(coupon['code'])
-                    # Condições alteradas podem gerar aviso novo; mesmo texto não.
-                    signature = hashlib.sha256((coupon['code'] + coupon['conditions']).encode()).hexdigest()
-                    key = 'coupon_notice_' + signature
-                    if not command('GET', key):
-                        notice = ('🎟️ <b>Cupom Mercado Livre recebido</b>\n\n'
-                                  + coupon_block({'coupon': coupon})
-                                  + '\n\nCondições do aviso:\n' + escape(coupon['conditions'])
-                                  + '\n\nCódigo recebido pelo bot; validade e aplicação não verificadas no checkout.')
-                        await bot.send_message(TELEGRAM_CHAT_ID, notice, parse_mode='HTML')
-                        command('SET', key, '1', 'EX', 7 * 86400)
+                    if await publish_coupon(bot, coupon):
                         announced += 1
             command('SET', 'coupon_inbox_offset', str(update.update_id + 1))
         return {'status': 'sucesso', 'updates': len(updates), 'recebidos': accepted,

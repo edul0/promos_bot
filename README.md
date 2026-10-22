@@ -28,6 +28,19 @@ contínuo e disco persistente. Os dados não são enviados a modelos de IA.
 Ele acompanha novas mensagens e edições de grupos/canais acessíveis à conta;
 não varre o histórico, não entra em novos grupos e não monitora conversas privadas.
 
+Fontes selecionadas em `chat_usernames`: `cupombr`, `cupomvalido` e
+`santostecpromo`. A inicialização resolve os nomes em IDs; se alguma fonte não
+estiver acessível pela conta autenticada, interrompe e informa qual é.
+`watch_all_groups` está desativado. O canal Shopee não foi incluído no fluxo ML.
+Com `publish_coupons_to_group=true`, o leitor importa cupons ML reconhecidos
+diretamente para o mesmo registro Redis dos encaminhamentos e anuncia no
+`TELEGRAM_CHAT_ID` existente, usando o mesmo histórico contra repetição.
+Não publica links comerciais da origem. Produtos continuam usando seus links
+de afiliado. `TELEGRAM_ALERT_CHAT_ID` é opcional para rodar só os avisos de cupom;
+quando preenchido, deve ser seu ID privado positivo para alertas de produtos.
+Use as mesmas credenciais Redis e do bot da API, configuradas privadamente
+no servidor do leitor. Nomes de canais não substituem a autenticação da conta.
+
 1. Instale Python 3.11+ e execute `python -m venv .venv`.
 2. Ative o ambiente e execute `pip install -r requirements-watch.txt`.
 3. Copie `.env.example` para `.env` e configure as credenciais. Obtenha seu
@@ -38,7 +51,8 @@ não varre o histórico, não entra em novos grupos e não monitora conversas pr
    Digite código e senha de duas etapas diretamente no terminal; não os envie no chat.
 6. Opcional: `python telegram_watch.py --list-chats` lista IDs. Em
    `watchlist.json`, desative `watch_all_groups` e preencha `chat_ids` para
-   selecionar apenas grupos de ofertas. Por padrão acompanha todos os grupos/canais.
+   selecionar grupos de ofertas por ID, ou ajuste `chat_usernames`. Por padrão
+   acompanha somente as três fontes selecionadas acima.
 7. Execute `python telegram_watch.py` e mantenha o processo ativo.
 
 `watchlist.json` já inclui Switch 2 exclusivamente com domínio Mercado Livre e

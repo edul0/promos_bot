@@ -1,6 +1,8 @@
 {
-  "watch_all_groups": true,
+  "watch_all_groups": false,
   "chat_ids": [],
+  "chat_usernames": ["cupombr", "cupomvalido", "santostecpromo"],
+  "publish_coupons_to_group": true,
   "coupon_alerts": true,
   "interests": [
     {"name": "Nintendo Switch 2 no Mercado Livre", "terms": ["switch 2", "switch2"], "exclude": ["capa", "pelicula", "case", "suporte", "somente controle"], "store": "ml", "max_price": null},

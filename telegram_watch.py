@@ -1,4 +1,4 @@
-"""Leitor pessoal de novos posts. Alertas somente no destino privado configurado."""
+"""Leitor das fontes escolhidas: cupons no grupo e ofertas de interesse no privado."""
 import argparse
 import asyncio
 import hashlib
@@ -16,6 +16,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 from affiliate_urls import own_ml_link
+from coupons import parse_coupon
+from coupon_inbox import publish_coupon
 log = logging.getLogger(__name__)
 
 
@@ -59,6 +61,30 @@ def fingerprint(text):
     return hashlib.sha256(plain.encode()).hexdigest()
 
 
+async def resolve_sources(client, config):
+    from telethon.utils import get_peer_id
+    selected = set(int(i) for i in config.get('chat_ids', []))
+    for username in config.get('chat_usernames', []):
+        try:
+            entity = await client.get_entity(username.lstrip('@'))
+            selected.add(get_peer_id(entity))
+        except Exception as exc:
+            raise RuntimeError(f'Não foi possível acessar @{username}: {type(exc).__name__}') from None
+    if not config.get('watch_all_groups') and not selected:
+        raise ValueError('Escolha chat_ids ou chat_usernames.')
+    return selected
+
+
+async def import_source_coupon(text, config, bot):
+    if not config.get('publish_coupons_to_group'):
+        return False
+    coupon = parse_coupon(text)
+    if not coupon:
+        return False
+    await publish_coupon(bot, coupon)
+    return True
+
+
 async def run(args):
     from telethon import TelegramClient, events
     from telegram import Bot
@@ -81,15 +107,19 @@ async def run(args):
     if not await client.is_user_authorized():
         await client.disconnect()
         raise RuntimeError('Execute primeiro: python telegram_watch.py --login')
-    destination = int(os.environ['TELEGRAM_ALERT_CHAT_ID'])
-    if destination <= 0:
+    destination = int(os.getenv('TELEGRAM_ALERT_CHAT_ID') or 0)
+    if destination < 0:
         raise ValueError('TELEGRAM_ALERT_CHAT_ID deve ser seu chat privado, com ID positivo.')
     bot = Bot(os.environ['TELEGRAM_BOT_TOKEN'])
     db = sqlite3.connect(data / 'alerts.sqlite3')
     db.execute('CREATE TABLE IF NOT EXISTS sent (fingerprint TEXT PRIMARY KEY, sent_at REAL NOT NULL)')
-    selected = set(int(i) for i in config.get('chat_ids', []))
-    if not config.get('watch_all_groups') and not selected:
-        raise ValueError('Escolha chat_ids ou habilite watch_all_groups.')
+    selected = await resolve_sources(client, config)
+    if config.get('publish_coupons_to_group'):
+        from config import TELEGRAM_CHAT_ID
+        if not TELEGRAM_CHAT_ID:
+            raise ValueError('Configure TELEGRAM_CHAT_ID para os avisos de cupom.')
+        if int(TELEGRAM_CHAT_ID) in selected:
+            raise ValueError('O grupo de destino não pode ser uma fonte de cupons.')
 
     async def handle(event):
         if event.out or not (event.is_group or event.is_channel):
@@ -97,6 +127,11 @@ async def run(args):
         if not config.get('watch_all_groups') and event.chat_id not in selected:
             return
         text = event.raw_text or ''
+        # Não usa links comerciais do rival: publica apenas código e condições.
+        if await import_source_coupon(text, config, bot):
+            return
+        if not destination:
+            return
         labels = match_labels(text, config)
         if not labels:
             return
@@ -150,7 +185,7 @@ async def run(args):
     client.add_event_handler(safe_handle, events.MessageEdited())
     try:
         async with bot:
-            log.info('Leitor ativo: novas mensagens e edições; alertas privados.')
+            log.info('Leitor ativo: %s fontes; cupons no grupo configurado.', len(selected))
             await client.run_until_disconnected()
     finally:
         db.close()
